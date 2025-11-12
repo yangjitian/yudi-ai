@@ -1,0 +1,59 @@
+{
+  "groups": [
+    {
+      "name": "spring.datasource",
+      "type": "com.yudi.ai.config.DataSourceProperties",
+      "sourceType": "com.yudi.ai.config.DataSourceProperties"
+    }
+  ],
+  "properties": [
+    {
+      "name": "spring.datasource.primary.driver-class-name",
+      "type": "java.lang.String",
+      "description": "Primary datasource driver class name",
+      "sourceType": "com.yudi.ai.config.DataSourceProperties$DataSourceConfig"
+    },
+    {
+      "name": "spring.datasource.primary.url",
+      "type": "java.lang.String",
+      "description": "Primary datasource URL",
+      "sourceType": "com.yudi.ai.config.DataSourceProperties$DataSourceConfig"
+    },
+    {
+      "name": "spring.datasource.primary.username",
+      "type": "java.lang.String",
+      "description": "Primary datasource username",
+      "sourceType": "com.yudi.ai.config.DataSourceProperties$DataSourceConfig"
+    },
+    {
+      "name": "spring.datasource.primary.password",
+      "type": "java.lang.String",
+      "description": "Primary datasource password",
+      "sourceType": "com.yudi.ai.config.DataSourceProperties$DataSourceConfig"
+    },
+    {
+      "name": "spring.datasource.secondary.driver-class-name",
+      "type": "java.lang.String",
+      "description": "Secondary datasource driver class name",
+      "sourceType": "com.yudi.ai.config.DataSourceProperties$DataSourceConfig"
+    },
+    {
+      "name": "spring.datasource.secondary.url",
+      "type": "java.lang.String",
+      "description": "Secondary datasource URL",
+      "sourceType": "com.yudi.ai.config.DataSourceProperties$DataSourceConfig"
+    },
+    {
+      "name": "spring.datasource.secondary.username",
+      "type": "java.lang.String",
+      "description": "Secondary datasource username",
+      "sourceType": "com.yudi.ai.config.DataSourceProperties$DataSourceConfig"
+    },
+    {
+      "name": "spring.datasource.secondary.password",
+      "type": "java.lang.String",
+      "description": "Secondary datasource password",
+      "sourceType": "com.yudi.ai.config.DataSourceProperties$DataSourceConfig"
+    }
+  ]
+}

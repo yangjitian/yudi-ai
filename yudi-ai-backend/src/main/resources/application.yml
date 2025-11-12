@@ -1,0 +1,50 @@
+spring:
+  application:
+    name: yudi-ai-backend
+  ai:
+    mcp:
+      client:
+        enabled: true
+        name: yudi-ai-mcp-client
+        version: 1.0.0
+        type: SYNC
+        request-timeout: 30s
+        toolcallback:
+          enabled: true
+        stdio:
+          servers-configuration: classpath:mcp-servers.json
+          root-change-notification: true
+  profiles:
+    active: local
+server:
+  port: 9000
+  servlet:
+    context-path: /api
+# springdoc-openapi
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+    tags-sorter: alpha
+    operations-sorter: alpha
+  api-docs:
+    path: /v3/api-docs
+  group-configs:
+    - group: 'default'
+      paths-to-match: '/**'
+      packages-to-scan: com.yudi.ai.controller
+# knife4j
+knife4j:
+  enable: true
+  setting:
+    language: zh_cn
+#mybatis-plus
+mybatis-plus:
+  mapper-locations: classpath:mapper/*.xml
+  type-aliases-package: com.yudi.ai.model.entity
+  configuration:
+    map-underscore-to-camel-case: true
+    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+  global-config:
+    db-config:
+      id-type: auto
+    enable-sql-runner: false  # 生产环境建议关闭

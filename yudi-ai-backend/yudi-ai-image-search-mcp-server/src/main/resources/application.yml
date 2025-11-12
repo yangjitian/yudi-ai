@@ -1,0 +1,26 @@
+spring:
+  application:
+    name: yu-image-search-mcp-server
+  profiles:
+    active: local
+server:
+  port: 8127
+  ai:
+    mcp:
+      server:
+        name: yudi-ai-image-search-mcp-server
+        version: 1.0.0
+        type: SYNC
+        instructions: "This server provides high-quality image search functionality using Pexels API. Use English keywords for best results. Supports searching for various types of images including food, nature, people, objects, etc."
+        sse-message-endpoint: /mcp/messages
+        capabilities:
+          tool: true
+          resource: true
+          prompt: true
+          completion: true
+        # stdio or sse
+        stdio: false
+  # stdio
+  main:
+    web-application-type: none
+    banner-mode: off

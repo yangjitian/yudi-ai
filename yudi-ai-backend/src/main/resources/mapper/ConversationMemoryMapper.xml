@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.yudi.ai.mapper.ConversationMemoryMapper">
+
+    <resultMap id="BaseResultMap" type="com.yudi.ai.model.entity.ConversationMemory">
+            <id property="id" column="id" jdbcType="BIGINT"/>
+            <result property="conversation_id" column="conversation_id" jdbcType="VARCHAR"/>
+            <result property="userId" column="user_id" jdbcType="BIGINT"/>
+            <result property="conversationRound" column="conversation_round" jdbcType="INTEGER"/>
+            <result property="userInput" column="user_input" jdbcType="VARCHAR"/>
+            <result property="aiResponse" column="ai_response" jdbcType="VARCHAR"/>
+            <result property="conversationTime" column="conversation_time" jdbcType="TIMESTAMP"/>
+    </resultMap>
+
+    <sql id="Base_Column_List">
+        id,conversation_id,user_id,
+        conversation_round,user_input,ai_response,
+        conversation_time
+    </sql>
+</mapper>
