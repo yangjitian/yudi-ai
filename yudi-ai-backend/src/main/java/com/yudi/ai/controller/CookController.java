@@ -5,6 +5,8 @@ import cn.hutool.core.io.resource.ResourceUtil;
 import cn.hutool.core.util.StrUtil;
 import com.alibaba.cloud.ai.dashscope.chat.DashScopeChatOptions;
 import com.yudi.ai.advisor.MyLoggerAdvisor;
+import com.yudi.ai.common.ErrorCode;
+import com.yudi.ai.exception.ThrowUtils;
 import com.yudi.ai.rag.QueryRewriter;
 import com.yudi.ai.utils.SseEmitterUtil;
 import jakarta.annotation.PostConstruct;
@@ -206,28 +208,45 @@ public class CookController {
         return performRagWithFallback(query, this.pgRetriever, "pgVector");
     }
 
-    /**
-     * RAG增强聊天端点 - 基于阿里云知识库。
-     * @param query 用户查询。
-     * @return AI结合云知识库生成的回答。
-     */
-    @GetMapping("/rag/chat")
-    public String ragChat(@RequestParam(value = "query", required = true) String query) {
-        log.info("云知识库 RAG聊天请求: {}", query);
-        return performRagWithFallback(query, this.cloudRetriever, "云知识库");
-    }
+    @GetMapping("/pg/chat/stream")
+    public SseEmitter ragPgChatStream(@RequestParam(value = "query") String query) {
+        log.info("pgVector RAG聊天请求（流式）: {}", query);
+        ThrowUtils.throwIf(StrUtil.isBlank(query), ErrorCode.PARAMETER_NULL,"查询内容不能为空");
+        try {
+            Flux<String> flux = performStreamRagWithFallback(query, this.pgRetriever, "pgVector")
+                    .doOnError(error -> log.error("pgVector RAG流式执行失败: {}", error.getMessage(), error))
+                    .onErrorResume(error -> Flux.just("执行失败: " + error.getMessage()));
 
-    /**
-     * RAG增强聊天端点 - 基于阿里云知识库（流式，使用SseEmitter）。
-     * 优先使用云知识库检索，检索不到时使用ChatClient作为兜底。
-     *
-     * @param query 用户查询。
-     * @return SSE流式响应。
-     */
-    @GetMapping("/chat/stream")
-    public SseEmitter chatStream(@RequestParam(value = "query") String query) {
-        log.info("云知识库 RAG聊天请求（流式）: {}", query);
-        Flux<String> flux = performStreamRagWithFallback(query, this.cloudRetriever, "云知识库");
-        return SseEmitterUtil.fromFlux(flux);
+            return SseEmitterUtil.fromFlux(flux);
+
+        } catch (Exception e) {
+            log.error("pgVector RAG初始化失败: {}", e.getMessage(), e);
+            return SseEmitterUtil.error("初始化失败: " + e.getMessage());
+        }
     }
+//
+//    /**
+//     * RAG增强聊天端点 - 基于阿里云知识库。
+//     * @param query 用户查询。
+//     * @return AI结合云知识库生成的回答。
+//     */
+//    @GetMapping("/cloud/chat")
+//    public String ragChat(@RequestParam(value = "query", required = true) String query) {
+//        log.info("云知识库 RAG聊天请求: {}", query);
+//        return performRagWithFallback(query, this.cloudRetriever, "云知识库");
+//    }
+//
+//    /**
+//     * RAG增强聊天端点 - 基于阿里云知识库（流式，使用SseEmitter）。
+//     * 优先使用云知识库检索，检索不到时使用ChatClient作为兜底。
+//     *
+//     * @param query 用户查询。
+//     * @return SSE流式响应。
+//     */
+//    @GetMapping("/cloud/chat/stream")
+//    public SseEmitter chatStream(@RequestParam(value = "query") String query) {
+//        log.info("云知识库 RAG聊天请求（流式）: {}", query);
+//        Flux<String> flux = performStreamRagWithFallback(query, this.cloudRetriever, "云知识库");
+//        return SseEmitterUtil.fromFlux(flux);
+//    }
 }

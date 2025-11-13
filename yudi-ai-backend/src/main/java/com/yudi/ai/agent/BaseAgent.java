@@ -26,10 +26,10 @@ public abstract class BaseAgent {
     private int maxSteps = 10;  // 减少默认步数，提高响应速度
     private int currentStep = 0;
     private List<Message> memory = new ArrayList<>();
-    
+
     // 循环检测阈值：当检测到重复响应次数达到此值时，认为陷入循环
     private int duplicateThreshold = 2;
-    
+
     // 限制memory最大长度，避免上下文过长导致响应变慢
     private static final int MAX_MEMORY_SIZE = 20;
 
@@ -47,19 +47,19 @@ public abstract class BaseAgent {
         if (StrUtil.isBlank(userInput)) {
             throw new RuntimeException("Cannot run agent with empty user prompt");
         }
-        
+
         // 2、执行，更改状态
         this.state = AgentState.RUNNING;
         this.currentStep = 0;
-        
+
         // 添加用户输入到记忆
         memory.add(new UserMessage(userInput));
         // 限制memory长度，避免上下文过长
         trimMemoryIfNeeded();
-        
+
         // 保存结果列表
         List<String> results = new ArrayList<>();
-        
+
         try {
             // 执行循环，直到完成或达到最大步数
             for (int i = 0; i < maxSteps && state != AgentState.FINISHED; i++) {
@@ -68,12 +68,12 @@ public abstract class BaseAgent {
                 log.info("Executing step {}/{}", stepNumber, maxSteps);
                 // 执行单步操作
                 String stepResult = step();
-                
+
                 // 每一步执行完后检查是否陷入循环
                 if (isStuck()) {
                     handleStuckState();
                 }
-                
+
                 if (stepResult != null && !stepResult.isEmpty()) {
                     // 如果步骤返回了结果，可能任务完成，但需要检查状态
                     if (state == AgentState.FINISHED) {
@@ -86,16 +86,16 @@ public abstract class BaseAgent {
                     results.add(result);
                 }
             }
-            
+
             // 检查是否超出步骤限制
             if (currentStep >= maxSteps && state != AgentState.FINISHED) {
                 state = AgentState.FINISHED;
                 results.add("Terminated: Reached max steps (" + maxSteps + ")");
                 log.warn("达到最大步数 {} 仍未完成", maxSteps);
             }
-            
+
             return String.join("\n", results);
-            
+
         } catch (Exception e) {
             state = AgentState.ERROR;
             log.error("执行出错: {}", e.getMessage(), e);
@@ -177,7 +177,7 @@ public abstract class BaseAgent {
         log.warn("[{}] Agent检测到陷入循环状态，重复阈值: {}", getName(), duplicateThreshold);
         log.warn("建议: {}", stuckPrompt);
     }
-    
+
     /**
      * 限制memory长度，保留最近的对话历史
      * 保留策略：保留第一个用户消息和最近的N条消息
@@ -190,11 +190,11 @@ public abstract class BaseAgent {
             // 保留最近的N-1条消息（保留第一个）
             int keepCount = MAX_MEMORY_SIZE - 1;
             List<Message> recentMessages = memory.subList(memory.size() - keepCount, memory.size());
-            
+
             memory.clear();
             memory.add(firstMessage);
             memory.addAll(recentMessages);
-            
+
             log.debug("[{}] Memory已修剪，从 {} 条消息减少到 {} 条", getName(), originalSize, memory.size());
         }
     }

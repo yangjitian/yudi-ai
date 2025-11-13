@@ -27,19 +27,19 @@ public class YdManusController {
 
     /**
      * YdManus智能体对话接口（非流式）
-     * 
+     *
      * @param query 用户查询
      * @return AI生成的回答
      */
     @GetMapping("/chat")
     public String chat(@RequestParam(value = "query") String query) {
         log.info("YdManus聊天请求: {}", query);
-        
+
         // 参数校验
         if (StrUtil.isBlank(query)) {
             return "查询内容不能为空";
         }
-        
+
         try {
             // 确保agent处于空闲状态
             ydManus.reset();
@@ -57,50 +57,47 @@ public class YdManusController {
 
     /**
      * YdManus智能体对话接口（流式，使用SseEmitter）
-     * 
+     *
      * @param query 用户查询
      * @return SSE流式响应
      */
     @GetMapping("/chat/stream")
-    public SseEmitter chatStream(@RequestParam(value = "query", required = true) String query) {
+    public SseEmitter chatStream(@RequestParam(value = "query") String query) {
         log.info("YdManus聊天请求（流式）: {}", query);
-        
+
         // 参数校验
         if (StrUtil.isBlank(query)) {
-            SseEmitter emitter = new SseEmitter();
-            try {
-                emitter.send(SseEmitter.event().data("查询内容不能为空").name("error"));
-                emitter.complete();
-            } catch (Exception e) {
-                log.error("发送错误消息失败", e);
-            }
-            return emitter;
+            return SseEmitterUtil.error("查询内容不能为空");
         }
-        
+
         try {
             // 确保agent处于空闲状态
             ydManus.reset();
+
             // 使用流式执行方法
-            Flux<String> flux = ydManus.runStream(query)
+            Flux<String> flux = Flux.defer(() -> ydManus.runStream(query))
+                    .doOnError(error -> {
+                        // 处理流中的异常
+                        log.error("YdManus流式执行失败: {}", error.getMessage(), error);
+                        ydManus.reset();
+                    })
                     .doFinally(signalType -> {
                         // 执行完成后重置agent状态
                         ydManus.reset();
                         log.info("YdManus流式执行完成，信号类型: {}", signalType);
+                    })
+                    .onErrorResume(error -> {
+                        // 将错误转换为错误消息流
+                        return Flux.just("执行失败: " + error.getMessage());
                     });
-            
+
             return SseEmitterUtil.fromFlux(flux);
+
         } catch (Exception e) {
-            log.error("YdManus流式执行失败: {}", e.getMessage(), e);
-            ydManus.reset(); // 确保重置状态
-            SseEmitter emitter = new SseEmitter();
-            try {
-                emitter.send(SseEmitter.event().data("执行失败: " + e.getMessage()).name("error"));
-                emitter.complete();
-            } catch (Exception ex) {
-                log.error("发送错误消息失败", ex);
-            }
-            return emitter;
+            // 只捕获同步异常（如 reset() 失败）
+            log.error("YdManus初始化失败: {}", e.getMessage(), e);
+            ydManus.reset();
+            return SseEmitterUtil.error("初始化失败: " + e.getMessage());
         }
     }
 }
-

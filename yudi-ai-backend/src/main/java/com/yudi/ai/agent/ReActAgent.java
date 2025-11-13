@@ -80,7 +80,7 @@ public abstract class ReActAgent extends BaseAgent {
         if (messages == null || messages.isEmpty()) {
             return null;
         }
-        
+
         // 从后往前查找最后一个 AssistantMessage
         for (int i = messages.size() - 1; i >= 0; i--) {
             Message message = messages.get(i);

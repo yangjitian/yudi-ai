@@ -73,8 +73,8 @@ public class WebMvcConfig implements WebMvcConfigurer {
                         "/user/register",
                         "/email/send-register-code",
                         "/email/send-login-code",
-                        "/cook/rag/chat",
-                        "/cook/chat/stream",
+                        "/cook/pg/chat",
+                        "/cook/pg/chat/stream",
                         "/yd_manus/chat",
                         "/yd_manus/chat/stream"
                 );
