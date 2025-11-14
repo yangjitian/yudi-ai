@@ -36,4 +36,3 @@ public class UserRegisterResponseVO {
      */
     private LocalDateTime createTime;
 }
-

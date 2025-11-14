@@ -25,7 +25,7 @@ export const useChatStore = defineStore('chat', () => {
     try {
       const response = await getConversations()
       if (response.code === 200 && response.data) {
-        conversations.value = response.data.conversations.map(conv => ({
+        conversations.value = response.data.map(conv => ({
           id: conv.conversationId,
           title: conv.title || '新会话',
           updatedAt: conv.updatedAt ? new Date(conv.updatedAt).getTime() : Date.now()
@@ -40,8 +40,8 @@ export const useChatStore = defineStore('chat', () => {
   const createConversation = async () => {
     try {
       const resp = await createConversationId()
-      if (resp?.code === 200 && resp?.data?.conversationId) {
-        const newId = resp.data.conversationId
+      if (resp?.code === 200 && resp?.data) {
+        const newId = resp.data
         // 插入到顶部（若已存在则先去重）
         const existIdx = conversations.value.findIndex(c => c.id === newId)
         if (existIdx > -1) {
@@ -75,8 +75,8 @@ export const useChatStore = defineStore('chat', () => {
     // 加载历史消息
     try {
       const response = await getConversationHistory(conversationId)
-      if (response.code === 200 && response.data && response.data.history) {
-        const history = response.data.history
+      if (response.code === 200 && response.data) {
+        const history = response.data
         history.forEach(memory => {
           // 添加用户消息
           if (memory.userInput) {
@@ -185,7 +185,7 @@ export const useChatStore = defineStore('chat', () => {
     addMessage('assistant', '')
     
     try {
-      const endpoint = useDeepThinking.value ? '/cook/yd_streamChat' : '/cook/chat/stream'
+      const endpoint = useDeepThinking.value ? '/yd_manus/chat/stream' : '/cook/pg/chat/stream'
       const response = await chatStream(query, conversationId, endpoint)
       
       // 处理SSE流
@@ -242,11 +242,20 @@ export const useChatStore = defineStore('chat', () => {
             if (currentEvent === 'error') {
               throw new Error(data || '请求失败')
             }
-            
-            // 普通数据流
-            if (data) {
+
+            if (currentEvent === 'complete') {
+              currentEvent = null
+              continue
+            }
+
+            // 普通数据流（默认或 message 事件）
+            if (!currentEvent || currentEvent === 'message') {
+              if (data) {
               fullContent += data
               updateLastMessage(fullContent)
+              }
+              currentEvent = null
+              continue
             }
             currentEvent = null
           }
@@ -271,7 +280,7 @@ export const useChatStore = defineStore('chat', () => {
         }
       }
       // 同步前端路由为后端实际使用的端点 + 会话ID，便于调试
-      const endpointPath = useDeepThinking.value ? '/cook/yd_streamChat' : '/cook/chat/stream'
+      const endpointPath = useDeepThinking.value ? '/yd_manus/chat/stream' : '/cook/pg/chat/stream'
       if (receivedConversationId || conversationId) {
         const cid = receivedConversationId || conversationId
         if (router.currentRoute.value.path !== `${endpointPath}/${cid}`) {
@@ -292,7 +301,7 @@ export const useChatStore = defineStore('chat', () => {
   // 发送消息（非流式，作为兜底）
   const sendMessageFallback = async (query, conversationId) => {
     try {
-      const endpoint = useDeepThinking.value ? '/cook/yd_chat' : '/cook/chat'
+      const endpoint = useDeepThinking.value ? '/yd_manus/chat' : '/cook/pg/chat'
       const response = await chat(query, conversationId, endpoint)
       
       if (response.code === 200 && response.data) {
@@ -325,7 +334,7 @@ export const useChatStore = defineStore('chat', () => {
           }
         }
         // 同步前端路由为后端实际使用的端点 + 会话ID，便于调试
-        const endpointPath = useDeepThinking.value ? '/cook/yd_chat' : '/cook/chat'
+        const endpointPath = useDeepThinking.value ? '/yd_manus/chat' : '/cook/pg/chat'
         if (finalConversationId) {
           if (router.currentRoute.value.path !== `${endpointPath}/${finalConversationId}`) {
             router.replace({ path: `${endpointPath}/${finalConversationId}` })

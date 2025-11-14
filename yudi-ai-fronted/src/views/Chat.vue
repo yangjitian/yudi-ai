@@ -369,7 +369,7 @@ const formatTime = (timestamp) => {
 // 路由调试信息更新
 const updateRouteDebug = () => {
   const path = route.path || ''
-  const match = path.match(/^(\/cook\/(?:chat\/stream|chat|yd_streamChat|yd_chat))\/([^/]+)$/)
+  const match = path.match(/^(\/(?:cook\/pg\/chat(?:\/stream)?|yd_manus\/chat(?:\/stream)?))\/([^/]+)$/)
   if (match) {
     routeDebug.value = { endpoint: match[1], conversationId: match[2] }
   } else {

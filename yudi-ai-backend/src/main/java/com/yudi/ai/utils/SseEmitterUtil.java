@@ -32,20 +32,28 @@ public class SseEmitterUtil {
     private static final int HEARTBEAT_INTERVAL = 15;
 
     /**
-     * 将 Flux<String> 转换为 SseEmitter
-     *
-     * @param flux 响应式流
-     * @return SseEmitter 实例
+     * 将 Flux<String> 转换为 SseEmitter（默认事件名为 message）
      */
     public static SseEmitter fromFlux(Flux<String> flux) {
+        return fromEventFlux(
+                flux.filter(StrUtil::isNotBlank)
+                        .map(data -> SseEmitter.event().name("message").data(data))
+        );
+    }
+
+    /**
+     * 将 Flux<SseEmitter.SseEventBuilder> 转换为 SseEmitter（支持自定义事件）
+     *
+     * @param eventFlux 事件流
+     * @return SseEmitter 实例
+     */
+    public static SseEmitter fromEventFlux(Flux<SseEmitter.SseEventBuilder> eventFlux) {
         SseEmitter emitter = new SseEmitter(DEFAULT_TIMEOUT);
 
-        // 使用数组来存储可变引用（解决lambda中的final限制）
         final Disposable[] subscriptionHolder = new Disposable[1];
         final ScheduledFuture<?>[] heartbeatHolder = new ScheduledFuture<?>[1];
         Runnable cleanup = getCleanup(subscriptionHolder, heartbeatHolder);
 
-        // 设置Emitter回调
         emitter.onTimeout(() -> {
             log.debug("SSE连接超时");
             cleanup.run();
@@ -59,7 +67,6 @@ public class SseEmitterUtil {
             cleanup.run();
         });
 
-        // 启动心跳
         heartbeatHolder[0] = HEARTBEAT_EXECUTOR.scheduleWithFixedDelay(() -> {
             try {
                 emitter.send(SseEmitter.event().name("ping").data("keep-alive"));
@@ -70,13 +77,10 @@ public class SseEmitterUtil {
             }
         }, HEARTBEAT_INTERVAL, HEARTBEAT_INTERVAL, TimeUnit.SECONDS);
 
-        // 订阅Flux
-        subscriptionHolder[0] = flux.subscribe(
-                data -> {
+        subscriptionHolder[0] = eventFlux.subscribe(
+                event -> {
                     try {
-                        if (StrUtil.isNotBlank(data)) {
-                            emitter.send(SseEmitter.event().name("message").data(data));
-                        }
+                        emitter.send(event);
                     } catch (IOException e) {
                         log.debug("发送数据失败: {}", e.getMessage());
                         safeComplete(emitter);
@@ -108,7 +112,7 @@ public class SseEmitterUtil {
         final AtomicBoolean cleaned = new AtomicBoolean(false);
 
         // 资源清理方法
-        Runnable cleanup = () -> {
+        return () -> {
             if (!cleaned.compareAndSet(false, true)) {
                 return;
             }
@@ -122,7 +126,6 @@ public class SseEmitterUtil {
             }
             log.debug("SSE连接资源已清理");
         };
-        return cleanup;
     }
 
     /**

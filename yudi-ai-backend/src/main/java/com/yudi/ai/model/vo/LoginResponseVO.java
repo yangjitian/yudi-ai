@@ -36,4 +36,3 @@ public class LoginResponseVO {
      */
     private String token;
 }
-

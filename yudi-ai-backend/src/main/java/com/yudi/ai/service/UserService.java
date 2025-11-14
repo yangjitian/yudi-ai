@@ -33,4 +33,11 @@ public interface UserService extends IService<User> {
      * @return 登出结果
      */
     boolean userLogout(String token);
+
+    /**
+     * 获取当前登录用户信息
+     *
+     * @return 当前用户信息
+     */
+    LoginResponseVO getCurrentUser();
 }

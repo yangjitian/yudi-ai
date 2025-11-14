@@ -13,6 +13,7 @@ import com.yudi.ai.model.vo.LoginResponseVO;
 import com.yudi.ai.model.dto.UserRegisterRequestDTO;
 import com.yudi.ai.model.entity.User;
 import com.yudi.ai.service.UserService;
+import com.yudi.ai.utils.UserHolder;
 import com.yudi.ai.utils.UsernameGenerator;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
@@ -33,19 +34,13 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
     @Resource
     private StringRedisTemplate stringRedisTemplate;
 
-    /**
-     * 注册验证码Redis key前缀
-     */
+    // 注册验证码Redis key前缀
     private static final String VERIFICATION_CODE_KEY_PREFIX = "verification:code:";
     
-    /**
-     * 登录验证码Redis key前缀
-     */
+    // 登录验证码Redis key前缀
     private static final String LOGIN_CODE_KEY_PREFIX = "login:code:";
 
-    /**
-     * 用户登录token Redis key前缀
-     */
+    // 用户登录token Redis key前缀
     public static final String LOGIN_TOKEN_KEY_PREFIX = "user:login:token:";
 
 
@@ -135,8 +130,19 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
         String tokenKey = LOGIN_TOKEN_KEY_PREFIX + token;
         return Boolean.TRUE.equals(stringRedisTemplate.delete(tokenKey));
     }
+
+    @Override
+    public LoginResponseVO getCurrentUser() {
+        // 从ThreadLocal中获取当前用户信息
+        User user = UserHolder.getUser();
+        ThrowUtils.throwIf(user == null,ErrorCode.NOT_LOGIN,"用户未登录");
+
+        // 构建响应对象
+        LoginResponseVO responseVO = new LoginResponseVO();
+        responseVO.setId(user.getId());
+        responseVO.setUserAccount(user.getUserAccount());
+        responseVO.setUserName(user.getUserName());
+        responseVO.setUserAvatar(user.getUserAvatar());
+        return responseVO;
+    }
 }
-
-
-
-

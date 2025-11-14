@@ -22,25 +22,25 @@ const routes = [
   },
   // 为了在URL中直观看到后端端点与会话ID，增加以下等价路由
   {
-    path: '/cook/chat/stream/:conversationId',
-    name: 'ChatStreamWithId',
+    path: '/cook/pg/chat/stream/:conversationId',
+    name: 'PgChatStreamWithId',
     component: () => import('@/views/Chat.vue'),
     meta: { requiresAuth: true }
   },
   {
-    path: '/cook/chat/:conversationId',
-    name: 'ChatNonStreamWithId',
+    path: '/cook/pg/chat/:conversationId',
+    name: 'PgChatNonStreamWithId',
     component: () => import('@/views/Chat.vue'),
     meta: { requiresAuth: true }
   },
   {
-    path: '/cook/yd_streamChat/:conversationId',
+    path: '/yd_manus/chat/stream/:conversationId',
     name: 'YdChatStreamWithId',
     component: () => import('@/views/Chat.vue'),
     meta: { requiresAuth: true }
   },
   {
-    path: '/cook/yd_chat/:conversationId',
+    path: '/yd_manus/chat/:conversationId',
     name: 'YdChatNonStreamWithId',
     component: () => import('@/views/Chat.vue'),
     meta: { requiresAuth: true }

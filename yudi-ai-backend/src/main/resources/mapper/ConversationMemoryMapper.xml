@@ -19,4 +19,41 @@
         conversation_round,user_input,ai_response,
         conversation_time
     </sql>
+
+    <!-- 查询用户的会话列表（每个会话的最新更新时间） -->
+    <select id="selectConversationListByUserId" resultType="map">
+        SELECT 
+            conversation_id as conversationId,
+            MAX(conversation_time) as maxTime
+        FROM conversation_memory
+        WHERE user_id = #{userId}
+        GROUP BY conversation_id
+        ORDER BY maxTime DESC
+    </select>
+
+    <!-- 查询指定会话的历史记录 -->
+    <select id="selectHistoryByConversationId" resultMap="BaseResultMap">
+        SELECT 
+            <include refid="Base_Column_List"/>
+        FROM conversation_memory
+        WHERE conversation_id = #{conversationId}
+          AND user_id = #{userId}
+        ORDER BY conversation_round ASC
+    </select>
+
+    <!-- 查询指定会话的最大轮次 -->
+    <select id="selectMaxRoundByConversationId" resultType="java.lang.Integer">
+        SELECT 
+            COALESCE(MAX(conversation_round), 0) as maxRound
+        FROM conversation_memory
+        WHERE conversation_id = #{conversationId}
+          AND user_id = #{userId}
+    </select>
+
+    <!-- 删除指定会话的所有记录 -->
+    <delete id="deleteByConversationId">
+        DELETE FROM conversation_memory
+        WHERE conversation_id = #{conversationId}
+          AND user_id = #{userId}
+    </delete>
 </mapper>

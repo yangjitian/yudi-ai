@@ -43,8 +43,8 @@
 ## 技术实现细节
 
 ### API接口对接
-- 流式接口：`/cook/chat/stream` 和 `/cook/yd_streamChat`
-- 非流式接口：`/cook/chat` 和 `/cook/yd_chat`
+- 流式接口：`/cook/pg/chat/stream` 和 `/yd_manus/chat/stream`
+- 非流式接口：`/cook/pg/chat` 和 `/yd_manus/chat`
 - 用户认证：`/user/login`、`/user/register`
 - 验证码：`/email/send-login-code`、`/email/send-register-code`
 

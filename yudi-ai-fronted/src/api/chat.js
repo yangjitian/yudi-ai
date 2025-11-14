@@ -2,7 +2,7 @@ import request from './request'
 import { useUserStore } from '@/stores/user'
 
 // 流式聊天（SSE）
-export const chatStream = (query, conversationId, endpoint = '/cook/chat/stream') => {
+export const chatStream = (query, conversationId, endpoint = '/cook/pg/chat/stream') => {
   const userStore = useUserStore()
   const params = new URLSearchParams({ query })
   const endpointWithId = conversationId ? `${endpoint}/${encodeURIComponent(conversationId)}` : endpoint
@@ -26,7 +26,7 @@ export const deleteConversationApi = (conversationId) => {
   })
 }
 // 非流式聊天
-export const chat = (query, conversationId, endpoint = '/cook/chat') => {
+export const chat = (query, conversationId, endpoint = '/cook/pg/chat') => {
   const params = { query }
   const endpointWithId = conversationId ? `${endpoint}/${encodeURIComponent(conversationId)}` : endpoint
   return request({
@@ -38,12 +38,12 @@ export const chat = (query, conversationId, endpoint = '/cook/chat') => {
 
 // 深度思考流式聊天
 export const ydStreamChat = (query, conversationId) => {
-  return chatStream(query, conversationId, '/cook/yd_streamChat')
+  return chatStream(query, conversationId, '/yd_manus/chat/stream')
 }
 
 // 深度思考非流式聊天
 export const ydChat = (query, conversationId) => {
-  return chat(query, conversationId, '/cook/yd_chat')
+  return chat(query, conversationId, '/yd_manus/chat')
 }
 
 // 获取会话列表
