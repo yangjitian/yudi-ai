@@ -18,7 +18,7 @@ import java.util.Set;
  * @author yudi
  */
 @RestController
-@RequestMapping("/api/document")
+@RequestMapping("/document")
 public class DocumentManagementController {
 
     @Resource

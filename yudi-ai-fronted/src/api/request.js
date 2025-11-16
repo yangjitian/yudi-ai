@@ -8,7 +8,6 @@ const request = axios.create({
   timeout: 60000
 })
 
-// 请求拦截器
 request.interceptors.request.use(
   (config) => {
     const userStore = useUserStore()
@@ -22,7 +21,6 @@ request.interceptors.request.use(
   }
 )
 
-// 响应拦截器
 request.interceptors.response.use(
   (response) => {
     return response.data
@@ -32,7 +30,6 @@ request.interceptors.response.use(
       const { status, data } = error.response
       
       if (status === 401) {
-        // 未授权，清除登录信息并跳转到登录页
         const userStore = useUserStore()
         userStore.userLogout()
         router.push('/login')
@@ -49,5 +46,3 @@ request.interceptors.response.use(
 )
 
 export default request
-
-

@@ -1,6 +1,5 @@
 import request from './request'
 
-// 发送登录验证码
 export const sendLoginCode = (data) => {
   return request({
     url: '/email/send-login-code',
@@ -9,7 +8,6 @@ export const sendLoginCode = (data) => {
   })
 }
 
-// 发送注册验证码
 export const sendRegisterCode = (data) => {
   return request({
     url: '/email/send-register-code',
@@ -18,7 +16,6 @@ export const sendRegisterCode = (data) => {
   })
 }
 
-// 登录
 export const login = (data) => {
   return request({
     url: '/user/login',
@@ -27,7 +24,6 @@ export const login = (data) => {
   })
 }
 
-// 注册
 export const register = (data) => {
   return request({
     url: '/user/register',
@@ -36,7 +32,6 @@ export const register = (data) => {
   })
 }
 
-// 登出
 export const logout = (token) => {
   return request({
     url: '/user/logout',
@@ -47,11 +42,9 @@ export const logout = (token) => {
   })
 }
 
-// 获取当前用户信息
 export const getCurrentUser = () => {
   return request({
     url: '/user/current',
     method: 'get'
   })
 }
-

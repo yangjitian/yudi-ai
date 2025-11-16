@@ -21,6 +21,7 @@ public class ToolRegistration {
         TerminalTool terminalTool = context.getBean(TerminalTool.class);
         WeatherSearchTool weatherSearchTool = context.getBean(WeatherSearchTool.class);
         BaiduImageSearchTool baiduImageSearchTool = context.getBean(BaiduImageSearchTool.class);
+        DateTimeTool dateTimeTool = context.getBean(DateTimeTool.class);
 
         // 3. 返回所有工具实例的数组
         return new Object[]{
@@ -32,7 +33,8 @@ public class ToolRegistration {
                 webSearchTool,
                 resourceDownloadTool,
                 weatherSearchTool,
-                baiduImageSearchTool
+                baiduImageSearchTool,
+                dateTimeTool
         };
     }
 }

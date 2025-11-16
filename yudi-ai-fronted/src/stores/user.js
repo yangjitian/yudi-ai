@@ -9,7 +9,6 @@ export const useUserStore = defineStore('user', () => {
 
   const isLoggedIn = computed(() => !!token.value)
 
-  // 发送登录验证码
   const sendLoginVerificationCode = async (email) => {
     try {
       const response = await sendLoginCode({ email })
@@ -26,7 +25,6 @@ export const useUserStore = defineStore('user', () => {
     }
   }
 
-  // 发送注册验证码
   const sendRegisterVerificationCode = async (email) => {
     try {
       const response = await sendRegisterCode({ email })
@@ -43,7 +41,6 @@ export const useUserStore = defineStore('user', () => {
     }
   }
 
-  // 登录
   const userLogin = async (loginData) => {
     try {
       const response = await login(loginData)
@@ -69,7 +66,6 @@ export const useUserStore = defineStore('user', () => {
     }
   }
 
-  // 注册
   const userRegister = async (registerData) => {
     try {
       const response = await register(registerData)
@@ -86,14 +82,12 @@ export const useUserStore = defineStore('user', () => {
     }
   }
 
-  // 登出：先调用后端销毁Token，再本地清理
   const userLogout = async () => {
     try {
       if (token.value) {
         await apiLogout(token.value)
       }
     } catch (_) {
-      // 忽略登出接口异常，继续本地清理
     } finally {
       token.value = ''
       userInfo.value = null
@@ -102,9 +96,7 @@ export const useUserStore = defineStore('user', () => {
     }
   }
 
-  // 恢复登录状态：应用启动时调用，验证并恢复用户登录状态
   const restoreUserState = async () => {
-    // 如果本地没有token，直接返回
     if (!token.value) {
       return false
     }
@@ -112,7 +104,6 @@ export const useUserStore = defineStore('user', () => {
     try {
       const response = await getCurrentUser()
       if (response.code === 200 && response.data) {
-        // Token有效，恢复用户信息
         token.value = response.data.token || token.value
         userInfo.value = {
           id: response.data.id,
@@ -120,12 +111,10 @@ export const useUserStore = defineStore('user', () => {
           userName: response.data.userName,
           userAvatar: response.data.userAvatar
         }
-        // 更新localStorage
         localStorage.setItem('token', token.value)
         localStorage.setItem('userInfo', JSON.stringify(userInfo.value))
         return true
       } else {
-        // 响应异常，清除本地数据
         token.value = ''
         userInfo.value = null
         localStorage.removeItem('token')
@@ -133,7 +122,6 @@ export const useUserStore = defineStore('user', () => {
         return false
       }
     } catch (error) {
-      // 请求失败（通常是401未授权），清除本地数据
       token.value = ''
       userInfo.value = null
       localStorage.removeItem('token')

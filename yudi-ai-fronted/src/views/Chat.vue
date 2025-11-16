@@ -1,6 +1,5 @@
 <template>
   <div class="chat-container">
-    <!-- 左侧边栏 -->
     <aside class="sidebar" :class="{ collapsed: sidebarCollapsed }">
       <div class="sidebar-header">
         <div class="logo-container">
@@ -78,9 +77,7 @@
       </div>
     </aside>
 
-    <!-- 主内容区 -->
     <main class="main-content">
-      <!-- 移动端侧边栏切换按钮 -->
       <div class="mobile-header">
         <el-button
           :icon="sidebarCollapsed ? Expand : Fold"
@@ -94,13 +91,7 @@
         </div>
       </div>
 
-      <!-- 消息列表 -->
       <div class="message-list" ref="messageListRef">
-        <!-- 调试信息：当前端点与会话ID -->
-        <div v-if="routeDebug" class="debug-banner">
-          <span>Endpoint: {{ routeDebug.endpoint }}</span>
-          <span v-if="routeDebug.conversationId"> | ConversationId: {{ routeDebug.conversationId }}</span>
-        </div>
         <div
           v-for="message in chatStore.messages"
           :key="message.id"
@@ -137,7 +128,6 @@
         </div>
       </div>
 
-      <!-- 输入区 -->
       <div class="input-area">
         <div class="input-wrapper">
           <el-input
@@ -146,7 +136,6 @@
             :rows="3"
             placeholder="输入您的问题..."
             @keydown.enter.exact.prevent="handleSendMessage"
-            @keydown.enter.shift.exact="handleShiftEnter"
             :disabled="chatStore.isLoading"
             class="message-input"
           />
@@ -192,11 +181,8 @@ const chatStore = useChatStore()
 const sidebarCollapsed = ref(false)
 const inputText = ref('')
 const messageListRef = ref(null)
-const routeDebug = ref({ endpoint: '', conversationId: '' })
 
-// 初始化
 onMounted(async () => {
-  // 加载用户信息
   if (!userStore.userInfo) {
     try {
       const response = await getCurrentUser()
@@ -214,54 +200,46 @@ onMounted(async () => {
     }
   }
   
-  // 加载会话列表
   await chatStore.loadConversations()
 
-  // 如果URL携带会话ID，则直接切换到该会话；否则停留在主页面（无会话ID状态）
   const urlConversationId = route.params.conversationId
-  updateRouteDebug()
   if (urlConversationId) {
     await chatStore.switchConversation(urlConversationId)
   } else {
-    // 保持在首页，无会话ID，不自动创建或跳转
+    chatStore.currentConversationId = null
+    chatStore.messages = []
   }
   
-  // 响应式处理
   handleResize()
   window.addEventListener('resize', handleResize)
 })
 
-// 响应式处理
 const handleResize = () => {
   if (window.innerWidth < 768) {
     sidebarCollapsed.value = true
   }
 }
 
-// 切换侧边栏
 const toggleSidebar = () => {
   sidebarCollapsed.value = !sidebarCollapsed.value
 }
 
-// 新建会话
 const handleNewConversation = async () => {
-  // 重置为“主页面”状态（无会话ID）
   chatStore.currentConversationId = null
   chatStore.messages = []
   inputText.value = ''
-  router.push({ name: 'Chat' }) // 跳到无会话ID的主页面
+  if (route.path !== '/') {
+    router.push({ name: 'Chat' })
+  }
   scrollToBottom()
 }
 
-// 切换会话
 const handleSwitchConversation = (conversationId) => {
-  // 若是占位会话（pending_ 前缀），仅重置输入与消息，不请求历史、不改路由
   if (typeof conversationId === 'string' && conversationId.startsWith('pending_')) {
     chatStore.currentConversationId = null
     chatStore.messages = []
     inputText.value = ''
     scrollToBottom()
-    updateRouteDebug()
     if (window.innerWidth < 768) {
       sidebarCollapsed.value = true
     }
@@ -270,17 +248,14 @@ const handleSwitchConversation = (conversationId) => {
   chatStore.switchConversation(conversationId)
   inputText.value = ''
   scrollToBottom()
-  // 同步URL到 /:conversationId
   if (route.params.conversationId !== conversationId) {
     router.push({ name: 'ChatWithId', params: { conversationId } })
   }
-  updateRouteDebug()
   if (window.innerWidth < 768) {
     sidebarCollapsed.value = true
   }
 }
 
-// 删除会话
 const handleDeleteConversation = async (conversationId) => {
   try {
     await ElMessageBox.confirm('确定要删除这个会话吗？', '提示', {
@@ -290,11 +265,9 @@ const handleDeleteConversation = async (conversationId) => {
     })
     await chatStore.deleteConversation(conversationId)
   } catch {
-    // 用户取消
   }
 }
 
-// 发送消息
 const handleSendMessage = async () => {
   if (!inputText.value.trim() || chatStore.isLoading) return
   
@@ -302,25 +275,13 @@ const handleSendMessage = async () => {
   inputText.value = ''
   
   const result = await chatStore.sendMessage(query)
-  // 如果是新会话，首次消息发送后拿到ID，更新URL
   if (result?.conversationId && route.params.conversationId !== result.conversationId) {
-    if (result.endpointUsed) {
-      router.replace({ path: `${result.endpointUsed}/${result.conversationId}` })
-    } else {
-      router.replace({ name: 'ChatWithId', params: { conversationId: result.conversationId } })
-    }
+    router.replace({ name: 'ChatWithId', params: { conversationId: result.conversationId } })
   }
-  updateRouteDebug()
   await nextTick()
   scrollToBottom()
 }
 
-// Shift+Enter 换行
-const handleShiftEnter = () => {
-  // 默认行为，允许换行
-}
-
-// 滚动到底部
 const scrollToBottom = () => {
   nextTick(() => {
     if (messageListRef.value) {
@@ -329,12 +290,10 @@ const scrollToBottom = () => {
   })
 }
 
-// 监听消息变化，自动滚动
 watch(() => chatStore.messages.length, () => {
   scrollToBottom()
 })
 
-// Markdown渲染
 const renderMarkdown = (content) => {
   if (!content) return ''
   try {
@@ -344,11 +303,9 @@ const renderMarkdown = (content) => {
   }
 }
 
-// 格式化时间
 const formatTime = (timestamp) => {
   if (!timestamp) return ''
   
-  // 支持时间戳（数字）和日期字符串
   const date = typeof timestamp === 'number' ? new Date(timestamp) : new Date(timestamp)
   const now = new Date()
   const diff = now - date
@@ -366,20 +323,6 @@ const formatTime = (timestamp) => {
   }
 }
 
-// 路由调试信息更新
-const updateRouteDebug = () => {
-  const path = route.path || ''
-  const match = path.match(/^(\/(?:cook\/pg\/chat(?:\/stream)?|yd_manus\/chat(?:\/stream)?))\/([^/]+)$/)
-  if (match) {
-    routeDebug.value = { endpoint: match[1], conversationId: match[2] }
-  } else {
-    routeDebug.value = { endpoint: 'N/A', conversationId: route.params.conversationId || '' }
-  }
-}
-
-watch(() => route.path, () => updateRouteDebug())
-
-// 登出
 const handleLogout = async () => {
   try {
     await ElMessageBox.confirm('确定要退出登录吗？', '提示', {
@@ -390,7 +333,6 @@ const handleLogout = async () => {
     await userStore.userLogout()
     router.push('/login')
   } catch {
-    // 用户取消
   }
 }
 </script>
@@ -579,15 +521,6 @@ const handleLogout = async () => {
   display: flex;
   flex-direction: column;
   gap: 24px;
-}
-
-.debug-banner {
-  background: #fff7e6;
-  color: #ad6800;
-  border: 1px solid #ffe7ba;
-  border-radius: 8px;
-  padding: 8px 12px;
-  font-size: 12px;
 }
 
 .message-item {

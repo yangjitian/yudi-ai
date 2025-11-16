@@ -1,72 +1,73 @@
 import request from './request'
 import { useUserStore } from '@/stores/user'
 
-// 流式聊天（SSE）
-export const chatStream = (query, conversationId, endpoint = '/cook/pg/chat/stream') => {
+/**
+ * 统一流式聊天接口 (SSE)
+ * @param {object} params
+ * @param {string} params.query - 用户查询
+ * @param {string} params.mode - 聊天模式 ('normal' 或 'deep_thought')
+ * @param {string|null} params.conversationId - 会话ID
+ * @returns {Promise<Response>} Fetch API的Response对象
+ */
+export const chatStream = ({ query, mode, conversationId }) => {
   const userStore = useUserStore()
-  const params = new URLSearchParams({ query })
-  const endpointWithId = conversationId ? `${endpoint}/${encodeURIComponent(conversationId)}` : endpoint
+  const endpoint = conversationId ? `/api/c/chat/stream/${encodeURIComponent(conversationId)}` : '/api/c/chat/stream'
 
-  return fetch(`/api${endpointWithId}?${params.toString()}`, {
-    method: 'GET',
+  return fetch(endpoint, {
+    method: 'POST',
     headers: {
       'Authorization': `Bearer ${userStore.token}`,
       'Accept': 'text/event-stream',
+      'Content-Type': 'application/json',
       'Cache-Control': 'no-cache'
-    }
+    },
+    body: JSON.stringify({ query, mode })
   })
 }
 
-// 删除会话（连同所有轮次）
+/**
+ * 统一非流式聊天接口
+ * @param {object} params
+ * @param {string} params.query - 用户查询
+ * @param {string} params.mode - 聊天模式 ('normal' 或 'deep_thought')
+ * @param {string|null} params.conversationId - 会话ID
+ * @returns {Promise}
+ */
+export const chat = ({ query, mode, conversationId }) => {
+  const endpoint = conversationId ? `/c/chat/${encodeURIComponent(conversationId)}` : '/c/chat'
+  return request({
+    url: endpoint,
+    method: 'post',
+    data: { query, mode }
+  })
+}
+
 export const deleteConversationApi = (conversationId) => {
   return request({
-    url: '/cook/conversation/delete',
+    url: '/conversation/delete',
     method: 'post',
     params: { conversationId }
   })
 }
-// 非流式聊天
-export const chat = (query, conversationId, endpoint = '/cook/pg/chat') => {
-  const params = { query }
-  const endpointWithId = conversationId ? `${endpoint}/${encodeURIComponent(conversationId)}` : endpoint
-  return request({
-    url: endpointWithId,
-    method: 'get',
-    params
-  })
-}
 
-// 深度思考流式聊天
-export const ydStreamChat = (query, conversationId) => {
-  return chatStream(query, conversationId, '/yd_manus/chat/stream')
-}
-
-// 深度思考非流式聊天
-export const ydChat = (query, conversationId) => {
-  return chat(query, conversationId, '/yd_manus/chat')
-}
-
-// 获取会话列表
 export const getConversations = () => {
   return request({
-    url: '/cook/conversations',
+    url: '/conversations',
     method: 'get'
   })
 }
 
-// 获取会话历史消息
 export const getConversationHistory = (conversationId) => {
   return request({
-    url: '/cook/conversation/history',
+    url: '/conversation/history',
     method: 'get',
     params: { conversationId }
   })
 }
 
-// 创建新会话ID（后端立即生成并返回）
 export const createConversationId = () => {
   return request({
-    url: '/cook/conversation/new',
+    url: '/conversation/new',
     method: 'post'
   })
 }
