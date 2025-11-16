@@ -27,7 +27,7 @@ public class WebMvcConfig implements WebMvcConfigurer {
 
     @Resource
     private StringRedisTemplate stringRedisTemplate;
-
+    
     @Override
     public void addInterceptors(InterceptorRegistry registry) {
         registry.addInterceptor(new HandlerInterceptor() {
@@ -35,10 +35,14 @@ public class WebMvcConfig implements WebMvcConfigurer {
                     public boolean preHandle(@NotNull HttpServletRequest request
                             , @NotNull HttpServletResponse response
                             , @NotNull Object handler) {
+                        String requestPath = request.getRequestURI();
+                        log.debug("拦截器处理请求: {}, Handler: {}", requestPath, handler.getClass().getSimpleName());
+                        
                         // 1.获取token
                         String authHeader = request.getHeader("Authorization");
                         if (StrUtil.isBlank(authHeader)) {
                             //不存在，拦截
+                            log.warn("请求缺少Authorization header: {}", requestPath);
                             response.setStatus(401);
                             return false;
                         }
@@ -48,6 +52,7 @@ public class WebMvcConfig implements WebMvcConfigurer {
                             token = authHeader.substring(7);
                         }
                         if (StrUtil.isBlank(token)) {
+                            log.warn("请求token为空: {}", requestPath);
                             response.setStatus(401);
                             return false;
                         }
@@ -57,6 +62,7 @@ public class WebMvcConfig implements WebMvcConfigurer {
                         // 4.判断用户是否存在
                         if (StrUtil.isBlank(userJson)) {
                             //不存在，拦截
+                            log.warn("token无效或已过期: {}", requestPath);
                             response.setStatus(401);
                             return false;
                         }
@@ -83,7 +89,11 @@ public class WebMvcConfig implements WebMvcConfigurer {
                         "/user/login",
                         "/user/register",
                         "/email/send-register-code",
-                        "/email/send-login-code"
+                        "/email/send-login-code",
+                        "/health",
+                        "/swagger-ui/**",
+                        "/v3/api-docs/**",
+                        "/doc.html"
                 );
     }
 }

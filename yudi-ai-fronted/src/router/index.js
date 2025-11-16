@@ -15,33 +15,8 @@ const routes = [
     meta: { requiresAuth: true }
   },
   {
-    path: '/:conversationId',
+    path: '/c/:conversationId',
     name: 'ChatWithId',
-    component: () => import('@/views/Chat.vue'),
-    meta: { requiresAuth: true }
-  },
-  // 为了在URL中直观看到后端端点与会话ID，增加以下等价路由
-  {
-    path: '/cook/pg/chat/stream/:conversationId',
-    name: 'PgChatStreamWithId',
-    component: () => import('@/views/Chat.vue'),
-    meta: { requiresAuth: true }
-  },
-  {
-    path: '/cook/pg/chat/:conversationId',
-    name: 'PgChatNonStreamWithId',
-    component: () => import('@/views/Chat.vue'),
-    meta: { requiresAuth: true }
-  },
-  {
-    path: '/yd_manus/chat/stream/:conversationId',
-    name: 'YdChatStreamWithId',
-    component: () => import('@/views/Chat.vue'),
-    meta: { requiresAuth: true }
-  },
-  {
-    path: '/yd_manus/chat/:conversationId',
-    name: 'YdChatNonStreamWithId',
     component: () => import('@/views/Chat.vue'),
     meta: { requiresAuth: true }
   }
@@ -66,4 +41,3 @@ router.beforeEach((to, from, next) => {
 })
 
 export default router
-

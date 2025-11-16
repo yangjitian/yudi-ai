@@ -96,11 +96,6 @@
 
       <!-- 消息列表 -->
       <div class="message-list" ref="messageListRef">
-        <!-- 调试信息：当前端点与会话ID -->
-        <div v-if="routeDebug" class="debug-banner">
-          <span>Endpoint: {{ routeDebug.endpoint }}</span>
-          <span v-if="routeDebug.conversationId"> | ConversationId: {{ routeDebug.conversationId }}</span>
-        </div>
         <div
           v-for="message in chatStore.messages"
           :key="message.id"
@@ -192,7 +187,6 @@ const chatStore = useChatStore()
 const sidebarCollapsed = ref(false)
 const inputText = ref('')
 const messageListRef = ref(null)
-const routeDebug = ref({ endpoint: '', conversationId: '' })
 
 // 初始化
 onMounted(async () => {
@@ -219,11 +213,12 @@ onMounted(async () => {
 
   // 如果URL携带会话ID，则直接切换到该会话；否则停留在主页面（无会话ID状态）
   const urlConversationId = route.params.conversationId
-  updateRouteDebug()
   if (urlConversationId) {
     await chatStore.switchConversation(urlConversationId)
   } else {
     // 保持在首页，无会话ID，不自动创建或跳转
+    chatStore.currentConversationId = null
+    chatStore.messages = []
   }
   
   // 响应式处理
@@ -245,11 +240,14 @@ const toggleSidebar = () => {
 
 // 新建会话
 const handleNewConversation = async () => {
-  // 重置为“主页面”状态（无会话ID）
+  // 重置为"主页面"状态（无会话ID）
   chatStore.currentConversationId = null
   chatStore.messages = []
   inputText.value = ''
-  router.push({ name: 'Chat' }) // 跳到无会话ID的主页面
+  // 跳转到首页 localhost:7000
+  if (route.path !== '/') {
+    router.push({ name: 'Chat' })
+  }
   scrollToBottom()
 }
 
@@ -261,7 +259,6 @@ const handleSwitchConversation = (conversationId) => {
     chatStore.messages = []
     inputText.value = ''
     scrollToBottom()
-    updateRouteDebug()
     if (window.innerWidth < 768) {
       sidebarCollapsed.value = true
     }
@@ -270,11 +267,10 @@ const handleSwitchConversation = (conversationId) => {
   chatStore.switchConversation(conversationId)
   inputText.value = ''
   scrollToBottom()
-  // 同步URL到 /:conversationId
+  // 同步URL到 /c/:conversationId
   if (route.params.conversationId !== conversationId) {
     router.push({ name: 'ChatWithId', params: { conversationId } })
   }
-  updateRouteDebug()
   if (window.innerWidth < 768) {
     sidebarCollapsed.value = true
   }
@@ -302,15 +298,10 @@ const handleSendMessage = async () => {
   inputText.value = ''
   
   const result = await chatStore.sendMessage(query)
-  // 如果是新会话，首次消息发送后拿到ID，更新URL
+  // 如果是新会话，首次消息发送后拿到ID，更新URL为 /c/{conversationId}
   if (result?.conversationId && route.params.conversationId !== result.conversationId) {
-    if (result.endpointUsed) {
-      router.replace({ path: `${result.endpointUsed}/${result.conversationId}` })
-    } else {
-      router.replace({ name: 'ChatWithId', params: { conversationId: result.conversationId } })
-    }
+    router.replace({ name: 'ChatWithId', params: { conversationId: result.conversationId } })
   }
-  updateRouteDebug()
   await nextTick()
   scrollToBottom()
 }
@@ -366,18 +357,6 @@ const formatTime = (timestamp) => {
   }
 }
 
-// 路由调试信息更新
-const updateRouteDebug = () => {
-  const path = route.path || ''
-  const match = path.match(/^(\/(?:cook\/pg\/chat(?:\/stream)?|yd_manus\/chat(?:\/stream)?))\/([^/]+)$/)
-  if (match) {
-    routeDebug.value = { endpoint: match[1], conversationId: match[2] }
-  } else {
-    routeDebug.value = { endpoint: 'N/A', conversationId: route.params.conversationId || '' }
-  }
-}
-
-watch(() => route.path, () => updateRouteDebug())
 
 // 登出
 const handleLogout = async () => {
@@ -579,15 +558,6 @@ const handleLogout = async () => {
   display: flex;
   flex-direction: column;
   gap: 24px;
-}
-
-.debug-banner {
-  background: #fff7e6;
-  color: #ad6800;
-  border: 1px solid #ffe7ba;
-  border-radius: 8px;
-  padding: 8px 12px;
-  font-size: 12px;
 }
 
 .message-item {

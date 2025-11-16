@@ -54,7 +54,7 @@ export const useChatStore = defineStore('chat', () => {
         })
         currentConversationId.value = newId
         messages.value = []
-        // 同步URL到通用路由 /:conversationId，避免沿用旧ID
+        // 同步URL到 /c/:conversationId
         if (router.currentRoute.value.params.conversationId !== newId) {
           router.push({ name: 'ChatWithId', params: { conversationId: newId } })
         }
@@ -106,10 +106,19 @@ export const useChatStore = defineStore('chat', () => {
       }
       if (currentConversationId.value === conversationId) {
         if (conversations.value.length > 0) {
-          await switchConversation(conversations.value[0].id)
+          const nextConversationId = conversations.value[0].id
+          await switchConversation(nextConversationId)
+          // 更新路由到 /c/{conversationId}
+          if (router.currentRoute.value.path !== `/c/${nextConversationId}`) {
+            router.replace({ name: 'ChatWithId', params: { conversationId: nextConversationId } })
+          }
         } else {
           currentConversationId.value = null
           messages.value = []
+          // 跳转到首页
+          if (router.currentRoute.value.path !== '/') {
+            router.push({ name: 'Chat' })
+          }
         }
       }
       ElMessage.success('删除成功')
@@ -185,8 +194,8 @@ export const useChatStore = defineStore('chat', () => {
     addMessage('assistant', '')
     
     try {
-      const endpoint = useDeepThinking.value ? '/yd_manus/chat/stream' : '/cook/pg/chat/stream'
-      const response = await chatStream(query, conversationId, endpoint)
+      const mode = useDeepThinking.value ? 'deep_thought' : 'normal';
+      const response = await chatStream({ query, conversationId, mode });
       
       // 处理SSE流
       const reader = response.body.getReader()
@@ -279,17 +288,16 @@ export const useChatStore = defineStore('chat', () => {
           currentConversationId.value = receivedConversationId
         }
       }
-      // 同步前端路由为后端实际使用的端点 + 会话ID，便于调试
-      const endpointPath = useDeepThinking.value ? '/yd_manus/chat/stream' : '/cook/pg/chat/stream'
+      // 同步前端路由为 /c/{conversationId}
       if (receivedConversationId || conversationId) {
         const cid = receivedConversationId || conversationId
-        if (router.currentRoute.value.path !== `${endpointPath}/${cid}`) {
-          router.replace({ path: `${endpointPath}/${cid}` })
+        if (router.currentRoute.value.path !== `/c/${cid}`) {
+          router.replace({ name: 'ChatWithId', params: { conversationId: cid } })
         }
       }
 
       isLoading.value = false
-      return { success: true, conversationId: receivedConversationId || conversationId, endpointUsed: endpointPath }
+      return { success: true, conversationId: receivedConversationId || conversationId }
     } catch (error) {
       isLoading.value = false
       updateLastMessage('抱歉，发生了错误：' + error.message)
@@ -301,8 +309,8 @@ export const useChatStore = defineStore('chat', () => {
   // 发送消息（非流式，作为兜底）
   const sendMessageFallback = async (query, conversationId) => {
     try {
-      const endpoint = useDeepThinking.value ? '/yd_manus/chat' : '/cook/pg/chat'
-      const response = await chat(query, conversationId, endpoint)
+      const mode = useDeepThinking.value ? 'deep_thought' : 'normal';
+      const response = await chat({ query, conversationId, mode });
       
       if (response.code === 200 && response.data) {
         updateLastMessage(response.data.answer)
@@ -333,14 +341,13 @@ export const useChatStore = defineStore('chat', () => {
             currentConversationId.value = finalConversationId
           }
         }
-        // 同步前端路由为后端实际使用的端点 + 会话ID，便于调试
-        const endpointPath = useDeepThinking.value ? '/yd_manus/chat' : '/cook/pg/chat'
+        // 同步前端路由为 /c/{conversationId}
         if (finalConversationId) {
-          if (router.currentRoute.value.path !== `${endpointPath}/${finalConversationId}`) {
-            router.replace({ path: `${endpointPath}/${finalConversationId}` })
+          if (router.currentRoute.value.path !== `/c/${finalConversationId}`) {
+            router.replace({ name: 'ChatWithId', params: { conversationId: finalConversationId } })
           }
         }
-        return { success: true, conversationId: finalConversationId, endpointUsed: endpointPath }
+        return { success: true, conversationId: finalConversationId }
       } else {
         throw new Error(response.message || '请求失败')
       }
