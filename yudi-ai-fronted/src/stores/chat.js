@@ -151,8 +151,15 @@ export const useChatStore = defineStore('chat', () => {
   const updateLastMessage = (content) => {
     if (messages.value.length > 0) {
       const lastMsg = messages.value[messages.value.length - 1]
-      if (lastMsg.role === 'assistant') {
-        lastMsg.content = content
+      if (lastMsg && lastMsg.role === 'assistant') {
+        // 企业级响应式更新策略：
+        // 1. 直接赋值触发 Vue 响应式系统
+        // 2. 更新时间戳确保变化被检测
+        // 3. 如果内容相同，仍然更新时间戳以确保 Vue 能检测到
+        if (lastMsg.content !== content) {
+          lastMsg.content = content
+        }
+        lastMsg.timestamp = Date.now()
       }
     }
   }
@@ -160,7 +167,8 @@ export const useChatStore = defineStore('chat', () => {
   const sendMessageStream = async (query, conversationId) => {
     isLoading.value = true
     addMessage('user', query, conversationId)
-    addMessage('assistant', '')
+    
+    let assistantMessageAdded = false
     
     try {
       const mode = useDeepThinking.value ? 'deep_thought' : 'normal';
@@ -172,7 +180,25 @@ export const useChatStore = defineStore('chat', () => {
       let receivedConversationId = conversationId
       let buffer = ''
       let currentEvent = null
+      
+      // 企业级更新策略：使用 requestAnimationFrame 优化性能，确保 Vue 能及时检测到变化
+      let rafId = null
+      let pendingUpdate = false
+      const scheduleUpdate = () => {
+        if (!pendingUpdate) {
+          pendingUpdate = true
+          rafId = requestAnimationFrame(() => {
+            if (assistantMessageAdded && fullContent !== undefined) {
+              updateLastMessage(fullContent)
+            }
+            pendingUpdate = false
+          })
+        }
+      }
 
+      // SSE 数据缓冲区，用于处理多行 data
+      let dataBuffer = []
+      
       while (true) {
         const { done, value } = await reader.read()
         if (done) break
@@ -182,17 +208,23 @@ export const useChatStore = defineStore('chat', () => {
         buffer = lines.pop() || ''
 
         for (let i = 0; i < lines.length; i++) {
-          const line = lines[i].trim()
+          const line = lines[i]
           
-          if (line.startsWith('event:')) {
-            currentEvent = line.substring(6).trim()
+          // 处理 event 行（去除前后空白）
+          if (line.trim().startsWith('event:')) {
+            currentEvent = line.substring(line.indexOf(':') + 1).trim()
             continue
           }
           
+          // 处理 data 行（保留原始内容，不 trim，因为可能包含重要空白）
           if (line.startsWith('data:')) {
-            const data = line.substring(5).trim()
+            // SSE 规范：data: 后面的内容保留原始格式
+            // 如果 data: 后面有空格，第一个空格后的内容才是数据
+            const dataContent = line.substring(5) // 保留 'data:' 后的所有内容，包括前导空格
             
+            // 对于非 message 事件，可以 trim
             if (currentEvent === 'conversationId') {
+              const data = dataContent.trim()
               receivedConversationId = data
               if (!conversationId) {
                 const pendingIdx = conversations.value.findIndex(c => c.isPending)
@@ -209,33 +241,95 @@ export const useChatStore = defineStore('chat', () => {
                 currentConversationId.value = receivedConversationId
               }
               currentEvent = null
+              dataBuffer = []
               continue
             }
             
             if (currentEvent === 'error') {
-              throw new Error(data || '请求失败')
+              throw new Error(dataContent.trim() || '请求失败')
             }
 
             if (currentEvent === 'complete') {
-            currentEvent = null
-            continue
-            }
-
-            if (!currentEvent || currentEvent === 'message') {
-              if (data) {
-              fullContent += data
-              updateLastMessage(fullContent)
-              }
               currentEvent = null
+              dataBuffer = []
               continue
             }
+
+            // message 事件：累积多行 data
+            if (!currentEvent || currentEvent === 'message') {
+              // 累积 data 行（SSE 支持多行 data）
+              dataBuffer.push(dataContent)
+              continue
+            }
+            
             currentEvent = null
+            dataBuffer = []
           }
           
-          if (line === '') {
+          // 空行表示一个完整的 SSE 消息结束
+          if (line.trim() === '') {
+            // 处理累积的 data
+            if (dataBuffer.length > 0 && (!currentEvent || currentEvent === 'message')) {
+              // 合并多行 data，保留换行符
+              // SSE 规范：多行 data 之间用 \n 连接
+              // 注意：data: 后的第一个空格是分隔符，应该移除
+              let data = dataBuffer.join('\n')
+              
+              // 处理 SSE 规范：data: 后的第一个空格是分隔符
+              // 但实际数据可能没有前导空格，所以只移除第一个空格（如果存在）
+              if (data.length > 0 && data[0] === ' ') {
+                data = data.substring(1)
+              }
+              
+              if (data.length > 0) {
+                if (!assistantMessageAdded) {
+                  addMessage('assistant', '')
+                  assistantMessageAdded = true
+                }
+                fullContent += data
+                // 企业级更新：使用 requestAnimationFrame 优化性能
+                // 确保内容实时更新，同时避免过度渲染
+                scheduleUpdate()
+              }
+              dataBuffer = []
+            }
             currentEvent = null
           }
         }
+      }
+      
+      // 处理最后剩余的 data（流结束时可能没有空行）
+      if (dataBuffer.length > 0 && (!currentEvent || currentEvent === 'message')) {
+        let data = dataBuffer.join('\n')
+        // 移除前导空格（SSE 规范：data: 后的第一个空格是分隔符）
+        if (data.length > 0 && data[0] === ' ') {
+          data = data.substring(1)
+        }
+        if (data.length > 0) {
+          if (!assistantMessageAdded) {
+            addMessage('assistant', '')
+            assistantMessageAdded = true
+          }
+          fullContent += data
+          scheduleUpdate()
+        }
+      }
+      
+      // 企业级清理：确保最后一次更新完成
+      if (rafId !== null) {
+        cancelAnimationFrame(rafId)
+        rafId = null
+      }
+      if (pendingUpdate) {
+        pendingUpdate = false
+      }
+      // 确保最终内容被更新
+      if (assistantMessageAdded && fullContent !== undefined) {
+        updateLastMessage(fullContent)
+      }
+      
+      if (!assistantMessageAdded && fullContent) {
+        addMessage('assistant', fullContent)
       }
 
       if (receivedConversationId) {
@@ -260,7 +354,11 @@ export const useChatStore = defineStore('chat', () => {
       return { success: true, conversationId: receivedConversationId || conversationId }
     } catch (error) {
       isLoading.value = false
-      updateLastMessage('抱歉，发生了错误：' + error.message)
+      if (!assistantMessageAdded) {
+        addMessage('assistant', '抱歉，发生了错误：' + error.message)
+      } else {
+        updateLastMessage('抱歉，发生了错误：' + error.message)
+      }
       return await sendMessageFallback(query, conversationId || currentConversationId.value)
     }
   }
@@ -271,7 +369,12 @@ export const useChatStore = defineStore('chat', () => {
       const response = await chat({ query, conversationId, mode });
       
       if (response.code === 200 && response.data) {
-        updateLastMessage(response.data.answer)
+        const lastMsg = messages.value[messages.value.length - 1]
+        if (lastMsg && lastMsg.role === 'assistant') {
+          updateLastMessage(response.data.answer)
+        } else {
+          addMessage('assistant', response.data.answer)
+        }
         const finalConversationId = response.data.conversationId || conversationId
         if (finalConversationId) {
           if (conversationId && finalConversationId !== conversationId) {
@@ -307,7 +410,12 @@ export const useChatStore = defineStore('chat', () => {
         throw new Error(response.message || '请求失败')
       }
     } catch (error) {
-      updateLastMessage('抱歉，发生了错误：' + error.message)
+      const lastMsg = messages.value[messages.value.length - 1]
+      if (lastMsg && lastMsg.role === 'assistant') {
+        updateLastMessage('抱歉，发生了错误：' + error.message)
+      } else {
+        addMessage('assistant', '抱歉，发生了错误：' + error.message)
+      }
       return { success: false, error: error.message }
     }
   }

@@ -176,9 +176,14 @@ public class ChatController {
                         });
             }
 
+            // 确保数据流正确发送，保留所有字符（包括换行符）
             Flux<SseEmitter.SseEventBuilder> eventFlux = Flux.concat(
                     Flux.just(SseEmitter.event().name("conversationId").data(finalConversationId)),
-                    dataFlux.doOnNext(fullResponse::append).doOnComplete(saveTask).map(chunk -> SseEmitter.event().name("message").data(chunk))
+                    dataFlux
+                            .doOnNext(fullResponse::append)
+                            .doOnComplete(saveTask)
+                            .filter(chunk -> chunk != null) // 只过滤 null，保留空白字符串
+                            .map(chunk -> SseEmitter.event().name("message").data(chunk))
             );
 
             return SseEmitterUtil.fromEventFlux(eventFlux);

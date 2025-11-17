@@ -16,16 +16,7 @@ import java.time.DayOfWeek;
 @Component
 public class DateTimeTool {
 
-    /**
-     * 获取当前日期和时间
-     * @param format 可选参数，指定返回格式。可选值：
-     *               - "date": 仅返回日期 (yyyy-MM-dd)
-     *               - "time": 仅返回时间 (HH:mm:ss)
-     *               - "datetime": 返回日期和时间 (yyyy-MM-dd HH:mm:ss)
-     *               - "full": 返回完整信息（日期、时间、星期）
-     *               如果不指定，默认返回完整信息
-     * @return 格式化的日期时间字符串
-     */
+
     @Tool(name = "getCurrentDateTime", description = "Get the current date and time. Optional format parameter: 'date' for date only, 'time' for time only, 'datetime' for date and time, 'full' for complete information including weekday. Default is 'full'.")
     public String getCurrentDateTime(
             @ToolParam(description = "Optional format: 'date', 'time', 'datetime', or 'full'. Default is 'full'.") String format) {
@@ -78,7 +69,7 @@ public class DateTimeTool {
     }
 
     /**
-     * 获取当前日期（简化方法）
+     * 获取当前日期
      */
     @Tool(name = "getCurrentDate", description = "Get the current date in yyyy-MM-dd format")
     public String getCurrentDate() {
@@ -86,7 +77,7 @@ public class DateTimeTool {
     }
 
     /**
-     * 获取当前时间（简化方法）
+     * 获取当前时间
      */
     @Tool(name = "getCurrentTime", description = "Get the current time in HH:mm:ss format")
     public String getCurrentTime() {

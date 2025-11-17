@@ -33,10 +33,11 @@ public class SseEmitterUtil {
 
     /**
      * 将 Flux<String> 转换为 SseEmitter（默认事件名为 message）
+     * 注意：不过滤空白字符串，因为可能包含重要的换行符等空白字符
      */
     public static SseEmitter fromFlux(Flux<String> flux) {
         return fromEventFlux(
-                flux.filter(StrUtil::isNotBlank)
+                flux.filter(data -> data != null) // 只过滤 null，保留空白字符串（可能包含换行符）
                         .map(data -> SseEmitter.event().name("message").data(data))
         );
     }
