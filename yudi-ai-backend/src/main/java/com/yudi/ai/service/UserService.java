@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.extension.service.IService;
 import com.yudi.ai.model.dto.LoginRequestDTO;
 import com.yudi.ai.model.vo.LoginResponseVO;
 import com.yudi.ai.model.dto.UserRegisterRequestDTO;
+import com.yudi.ai.model.dto.UserUpdateRequestDTO;
 import com.yudi.ai.model.entity.User;
 
 /**
@@ -40,4 +41,13 @@ public interface UserService extends IService<User> {
      * @return 当前用户信息
      */
     LoginResponseVO getCurrentUser();
+
+    /**
+     * 修改当前登录用户资料
+     *
+     * @param userUpdateRequestDTO 资料修改请求
+     * @param token                当前登录凭证
+     * @return 最新的用户信息
+     */
+    LoginResponseVO updateCurrentUser(UserUpdateRequestDTO userUpdateRequestDTO, String token);
 }

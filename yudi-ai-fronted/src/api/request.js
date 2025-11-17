@@ -1,11 +1,24 @@
 import axios from 'axios'
+import JSONBig from 'json-bigint'
 import { ElMessage } from 'element-plus'
 import { useUserStore } from '@/stores/user'
 import router from '@/router'
 
+const jsonBigStringParser = JSONBig({ storeAsString: true })
+
 const request = axios.create({
   baseURL: '/api',
-  timeout: 60000
+  timeout: 60000,
+  transformResponse: [
+    (data) => {
+      if (!data) return data
+      try {
+        return jsonBigStringParser.parse(data)
+      } catch (error) {
+        return data
+      }
+    }
+  ]
 })
 
 request.interceptors.request.use(

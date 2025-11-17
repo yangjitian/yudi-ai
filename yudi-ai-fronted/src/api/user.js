@@ -48,3 +48,11 @@ export const getCurrentUser = () => {
     method: 'get'
   })
 }
+
+export const updateUserProfile = (data) => {
+  return request({
+    url: '/user/update',
+    method: 'post',
+    data
+  })
+}

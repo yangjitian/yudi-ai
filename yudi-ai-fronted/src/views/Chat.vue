@@ -1,10 +1,29 @@
 <template>
   <div class="chat-container">
+    <!-- 展开按钮 - 当侧边栏收起时显示在左侧边缘 -->
+    <el-button
+      v-if="sidebarCollapsed"
+      :icon="Expand"
+      circle
+      @click="toggleSidebar"
+      class="expand-sidebar-btn"
+      title="展开侧边栏"
+    />
+    
     <aside class="sidebar" :class="{ collapsed: sidebarCollapsed }">
       <div class="sidebar-header">
         <div class="logo-container">
           <img src="/logo.png" alt="雨落有味" class="logo-img" />
           <h2 class="logo">雨落有味</h2>
+          <el-button
+            v-if="!sidebarCollapsed"
+            :icon="Fold"
+            circle
+            @click="toggleSidebar"
+            class="collapse-sidebar-btn"
+            title="收起侧边栏"
+            size="small"
+          />
         </div>
         <el-button
           v-if="!sidebarCollapsed"
@@ -50,30 +69,43 @@
       </div>
       
       <div class="sidebar-footer">
-        <div class="user-info" v-if="!sidebarCollapsed && userStore.userInfo">
-          <el-avatar :size="32" :src="userStore.userInfo.userAvatar">
-            {{ userStore.userInfo.userName?.charAt(0) || 'U' }}
+        <div
+          class="user-quick-info"
+          v-if="!sidebarCollapsed"
+          @click="toggleUserDetails"
+        >
+          <el-avatar :size="36" :src="userStore.userInfo?.userAvatar">
+            {{ userStore.userInfo?.userName?.charAt(0) || 'U' }}
           </el-avatar>
-          <div class="user-details">
-            <span class="user-name">{{ userStore.userInfo.userName }}</span>
-            <el-button
-              :icon="SwitchButton"
-              text
-              circle
-              size="small"
-              @click="handleLogout"
-              class="logout-btn"
-              title="退出登录"
-            />
+          <div class="user-meta">
+            <span class="user-name">
+              {{ userStore.userInfo?.userName || '未登录用户' }}
+            </span>
+            <span class="user-hint" v-if="!userStore.userInfo">
+              请先登录以同步会话
+            </span>
           </div>
+          <template v-if="userStore.userInfo">
+            <el-button
+              class="user-auth-btn is-logout"
+              size="small"
+              round
+              @click.stop="handleAuthAction"
+            >
+              退出登录
+            </el-button>
+          </template>
+          <el-button
+            v-else
+            class="user-auth-btn is-login"
+            size="small"
+            round
+            type="primary"
+            @click.stop="handleAuthAction"
+          >
+            登录
+          </el-button>
         </div>
-        <el-button
-          v-else
-          :icon="sidebarCollapsed ? Expand : Fold"
-          circle
-          @click="toggleSidebar"
-          class="toggle-sidebar-btn"
-        />
       </div>
     </aside>
 
@@ -91,7 +123,7 @@
         </div>
       </div>
 
-      <div class="message-list" ref="messageListRef">
+      <div class="message-list" ref="messageListRef" :class="{ 'has-messages': chatStore.messages.length > 0, 'first-message': chatStore.messages.length > 0 && chatStore.messages[0]?.role === 'user' }">
         <div
           v-for="message in chatStore.messages"
           :key="`${message.id}-${message.content?.length || 0}`"
@@ -137,38 +169,202 @@
         </div>
       </div>
 
-      <div class="input-area">
-        <div class="input-wrapper">
-          <el-input
-            v-model="inputText"
-            type="textarea"
-            :rows="3"
-            placeholder="输入您的问题..."
-            @keydown.enter.exact.prevent="handleSendMessage"
-            :disabled="chatStore.isLoading"
-            class="message-input"
-          />
-          <div class="input-actions">
-            <el-switch
-              v-model="chatStore.useDeepThinking"
-              active-text="深度思考"
-              inactive-text="普通模式"
-              size="small"
+      <!-- 初始状态：居中显示的对话框 -->
+      <div v-if="chatStore.messages.length === 0" class="initial-input-container">
+        <div class="initial-prompt">想吃什么？让我来帮你搞定</div>
+        <div class="initial-input-wrapper">
+          <div class="chat-input-shell chat-input-shell--initial">
+            <el-input
+              v-model="inputText"
+              type="textarea"
+              :rows="2"
+              placeholder="输入您的问题..."
+              @keydown.enter.exact.prevent="handleSendMessage"
+              :disabled="chatStore.isLoading"
+              class="chat-textarea"
             />
-            <el-button
-              type="primary"
-              :icon="Promotion"
-              :loading="chatStore.isLoading"
-              @click="handleSendMessage"
-              :disabled="!inputText.trim()"
-              class="send-btn"
-            >
-              发送
-            </el-button>
+            <div class="chat-actions">
+              <div class="chat-mode-switch">
+                <div class="mode-dropdown" :class="{ open: isModeDropdownOpen }">
+                  <button type="button" class="mode-card mode-card-current" @click="toggleModeDropdown">
+                    <div class="mode-card-left">
+                      <img
+                        :src="currentModeOption.icon"
+                        :alt="`${currentModeOption.title}图标`"
+                        class="mode-card-icon"
+                        loading="lazy"
+                      />
+                      <div class="mode-card-text">
+                        <div class="mode-card-title">
+                          {{ currentModeOption.title }}
+                          <span class="mode-chip">当前</span>
+                        </div>
+                        <div class="mode-card-desc">{{ currentModeOption.description }}</div>
+                      </div>
+                    </div>
+                    <el-icon class="mode-card-arrow">
+                      <CaretTop v-if="isModeDropdownOpen" />
+                      <CaretBottom v-else />
+                    </el-icon>
+                  </button>
+                  <transition name="mode-dropdown-fade">
+                    <div class="mode-dropdown-panel" v-show="isModeDropdownOpen">
+                      <button
+                        v-for="option in alternateModes"
+                        :key="option.key"
+                        type="button"
+                        class="mode-card mode-card-option"
+                        @click="handleSelectMode(option)"
+                      >
+                        <div class="mode-card-left">
+                          <img
+                            :src="option.icon"
+                            :alt="`${option.title}图标`"
+                            class="mode-card-icon"
+                            loading="lazy"
+                          />
+                          <div class="mode-card-text">
+                            <div class="mode-card-title">
+                              {{ option.title }}
+                            </div>
+                            <div class="mode-card-desc">{{ option.description }}</div>
+                          </div>
+                        </div>
+                      </button>
+                    </div>
+                  </transition>
+                </div>
+              </div>
+              <el-button
+                type="primary"
+                circle
+                :icon="Promotion"
+                :loading="chatStore.isLoading"
+                @click="handleSendMessage"
+                :disabled="!inputText.trim()"
+                class="chat-send-btn"
+                title="发送消息"
+              />
+            </div>
           </div>
         </div>
       </div>
+
+      <!-- 有消息时：底部输入框 -->
+      <div v-else class="input-area-wrapper">
+        <div class="input-area">
+          <div class="input-wrapper">
+            <div class="chat-input-shell">
+              <el-input
+                v-model="inputText"
+                type="textarea"
+                :rows="2"
+                placeholder="输入您的问题..."
+                @keydown.enter.exact.prevent="handleSendMessage"
+                :disabled="chatStore.isLoading"
+                class="chat-textarea"
+              />
+              <div class="chat-actions">
+                <div class="chat-mode-switch">
+                  <div class="mode-dropdown" :class="{ open: isModeDropdownOpen }">
+                    <button type="button" class="mode-card mode-card-current" @click="toggleModeDropdown">
+                      <div class="mode-card-left">
+                        <img
+                          :src="currentModeOption.icon"
+                          :alt="`${currentModeOption.title}图标`"
+                          class="mode-card-icon"
+                          loading="lazy"
+                        />
+                        <div class="mode-card-text">
+                          <div class="mode-card-title">
+                            {{ currentModeOption.title }}
+                            <span class="mode-chip">当前</span>
+                          </div>
+                          <div class="mode-card-desc">{{ currentModeOption.description }}</div>
+                        </div>
+                      </div>
+                      <el-icon class="mode-card-arrow">
+                        <CaretTop v-if="isModeDropdownOpen" />
+                        <CaretBottom v-else />
+                      </el-icon>
+                    </button>
+                    <transition name="mode-dropdown-fade">
+                      <div class="mode-dropdown-panel" v-show="isModeDropdownOpen">
+                        <button
+                          v-for="option in alternateModes"
+                          :key="option.key"
+                          type="button"
+                          class="mode-card mode-card-option"
+                          @click="handleSelectMode(option)"
+                        >
+                          <div class="mode-card-left">
+                            <img
+                              :src="option.icon"
+                              :alt="`${option.title}图标`"
+                              class="mode-card-icon"
+                              loading="lazy"
+                            />
+                            <div class="mode-card-text">
+                              <div class="mode-card-title">
+                                {{ option.title }}
+                              </div>
+                              <div class="mode-card-desc">{{ option.description }}</div>
+                            </div>
+                          </div>
+                        </button>
+                      </div>
+                    </transition>
+                  </div>
+                </div>
+                <el-button
+                  type="primary"
+                  circle
+                  :icon="Promotion"
+                  :loading="chatStore.isLoading"
+                  @click="handleSendMessage"
+                  :disabled="!inputText.trim()"
+                  class="chat-send-btn"
+                  title="发送消息"
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="input-footer-tip">
+          小小雨滴.也会犯错，请注意信息甄别
+        </div>
+      </div>
     </main>
+
+    <el-dialog
+    v-model="profileDialogVisible"
+    title="编辑个人资料"
+    width="420px"
+    :close-on-click-modal="false"
+  >
+    <el-form :model="profileForm" label-width="80px">
+      <el-form-item label="用户ID">
+        <el-input v-model="profileForm.id" disabled />
+      </el-form-item>
+      <el-form-item label="昵称">
+        <el-input v-model="profileForm.userName" placeholder="请输入昵称" />
+      </el-form-item>
+      <el-form-item label="邮箱">
+        <el-input v-model="profileForm.userAccount" placeholder="请输入邮箱" />
+      </el-form-item>
+      <el-form-item label="头像URL">
+        <el-input v-model="profileForm.userAvatar" placeholder="请输入头像图片地址" />
+      </el-form-item>
+    </el-form>
+    <template #footer>
+      <span class="dialog-footer">
+        <el-button @click="profileDialogVisible = false">取 消</el-button>
+        <el-button type="primary" :loading="profileSaving" @click="handleSaveProfile">
+          保 存
+        </el-button>
+      </span>
+    </template>
+  </el-dialog>
   </div>
 </template>
 
@@ -178,7 +374,7 @@ import { useRouter, useRoute } from 'vue-router'
 import { useUserStore } from '@/stores/user'
 import { useChatStore } from '@/stores/chat'
 import { getCurrentUser } from '@/api/user'
-import { Plus, Delete, SwitchButton, Expand, Fold, ChatDotRound, Promotion } from '@element-plus/icons-vue'
+import { Plus, Delete, Expand, Fold, ChatDotRound, Promotion, CaretBottom, CaretTop, SwitchButton } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { marked } from 'marked'
 import hljs from 'highlight.js'
@@ -192,6 +388,84 @@ const chatStore = useChatStore()
 const sidebarCollapsed = ref(false)
 const inputText = ref('')
 const messageListRef = ref(null)
+const profileDialogVisible = ref(false)
+const profileSaving = ref(false)
+const profileForm = ref({
+  id: '',
+  userName: '',
+  userAccount: '',
+  userAvatar: ''
+})
+
+const formatUserId = (value) => {
+  if (value === null || value === undefined) return ''
+  return String(value)
+}
+
+const normalModeIcon = `data:image/svg+xml;utf8,${encodeURIComponent(`
+<svg width="72" height="72" viewBox="0 0 72 72" xmlns="http://www.w3.org/2000/svg">
+  <rect width="72" height="72" rx="18" fill="#FFEAD2"/>
+  <circle cx="36" cy="30" r="16" fill="#FFBB6C"/>
+  <path d="M18 48c4 6 12 10 18 10s14-4 18-10" stroke="#D46A1C" stroke-width="4" stroke-linecap="round" fill="none"/>
+  <path d="M18 48h36" stroke="#D46A1C" stroke-width="4" stroke-linecap="round"/>
+</svg>
+`)}`
+
+const agentModeIcon = `data:image/svg+xml;utf8,${encodeURIComponent(`
+<svg width="72" height="72" viewBox="0 0 72 72" xmlns="http://www.w3.org/2000/svg">
+  <rect width="72" height="72" rx="18" fill="#E4F0FF"/>
+  <circle cx="36" cy="36" r="20" fill="url(#g)"/>
+  <path d="M36 18v8M36 46v8M18 36h8M46 36h8" stroke="#1B62F2" stroke-width="3" stroke-linecap="round"/>
+  <circle cx="36" cy="36" r="6" fill="#fff"/>
+  <defs>
+    <linearGradient id="g" x1="16" y1="16" x2="56" y2="56" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#7AA7FF"/>
+      <stop offset="1" stop-color="#2E7AFB"/>
+    </linearGradient>
+  </defs>
+</svg>
+`)}`
+
+const MODE_OPTIONS = [
+  {
+    key: 'basic',
+    title: '普通模式',
+    description: '灵感随叫随到的美食顾问',
+    icon: normalModeIcon,
+    value: false
+  },
+  {
+    key: 'agent',
+    title: 'Agent 模式',
+    description: '一位全新不同的智能助手',
+    icon: agentModeIcon,
+    value: true
+  }
+]
+
+const isModeDropdownOpen = ref(false)
+const currentModeOption = computed(() => MODE_OPTIONS.find(option => option.value === chatStore.useDeepThinking) ?? MODE_OPTIONS[0])
+const alternateModes = computed(() => MODE_OPTIONS.filter(option => option.key !== currentModeOption.value.key))
+const displayUserId = computed(() => {
+  if (!userStore.userInfo) return ''
+  return formatUserId(userStore.userInfo.id)
+})
+
+const toggleModeDropdown = () => {
+  isModeDropdownOpen.value = !isModeDropdownOpen.value
+}
+
+const handleSelectMode = (option) => {
+  chatStore.useDeepThinking = option.value
+  isModeDropdownOpen.value = false
+}
+
+watch(
+  () => chatStore.messages.length,
+  () => {
+    isModeDropdownOpen.value = false
+  }
+)
 
 // 检查是否有助手消息且有内容
 const hasAssistantMessageWithContent = computed(() => {
@@ -217,7 +491,7 @@ onMounted(async () => {
       const response = await getCurrentUser()
       if (response.code === 200 && response.data) {
         userStore.userInfo = {
-          id: response.data.id,
+          id: formatUserId(response.data.id),
           userAccount: response.data.userAccount,
           userName: response.data.userName,
           userAvatar: response.data.userAvatar
@@ -295,6 +569,14 @@ const handleDeleteConversation = async (conversationId) => {
     await chatStore.deleteConversation(conversationId)
   } catch {
   }
+}
+
+const toggleUserDetails = () => {
+  if (!userStore.userInfo) {
+    router.push('/login')
+    return
+  }
+  openProfileDialog()
 }
 
 const handleSendMessage = async () => {
@@ -486,7 +768,7 @@ marked.use({
       try {
         return hljs.highlight(code, { language: lang }).value
       } catch (err) {
-        console.warn('代码高亮失败:', err)
+        // 忽略单次代码高亮错误
       }
     }
     try {
@@ -544,9 +826,7 @@ const debouncedHighlightAndFix = debounce((messageId) => {
       
       // 应用样式修复
       applyMarkdownStyleFixes()
-    } catch (error) {
-      console.warn('防抖处理高亮失败:', error)
-    }
+    } catch (error) {}
   })
 }, 50) // 50ms的延迟，平衡响应速度和性能
 
@@ -566,7 +846,6 @@ const escapeHtml = (text) => {
 const textToHtml = (text) => {
   if (!text) return ''
   if (typeof text !== 'string') {
-    console.warn('textToHtml: 输入不是字符串类型', typeof text)
     text = String(text)
   }
   // 转义 HTML 特殊字符
@@ -633,7 +912,6 @@ const ensureSafeMarkdown = (text) => {
 const getRenderedMarkdown = (message, isStreaming) => {
   // 边界情况处理
   if (!message) {
-    console.warn('getRenderedMarkdown: message 为空')
     return ''
   }
   
@@ -643,7 +921,6 @@ const getRenderedMarkdown = (message, isStreaming) => {
     content = ''
   }
   if (typeof content !== 'string') {
-    console.warn('getRenderedMarkdown: content 不是字符串类型', typeof content)
     content = String(content)
   }
   
@@ -682,7 +959,6 @@ const getRenderedMarkdown = (message, isStreaming) => {
       
       return rendered
     } catch (e) {
-      console.warn('流式Markdown渲染失败，降级为增强版纯文本:', e.message)
       // 降级为增强版纯文本显示
       return enhancedTextToHtml(content)
     }
@@ -727,7 +1003,6 @@ const getRenderedMarkdown = (message, isStreaming) => {
     
     // 验证渲染结果
     if (!rendered || typeof rendered !== 'string') {
-      console.warn('Markdown 渲染结果无效，降级为增强版纯文本')
       return enhancedTextToHtml(content)
     }
     
@@ -752,7 +1027,6 @@ const getRenderedMarkdown = (message, isStreaming) => {
     
     return rendered
   } catch (e) {
-    console.error('Markdown 渲染错误:', e, '内容长度:', content.length)
     // 错误降级处理
     return enhancedTextToHtml(content)
   }
@@ -1111,7 +1385,6 @@ function enhancedTextToHtml(text) {
     
     return html
   } catch (e) {
-    console.warn('增强版文本转HTML失败:', e)
     return escapeHtml(text).replace(/\n/g, '<br>')
   }
 }
@@ -1155,13 +1428,10 @@ const highlightCodeBlocks = () => {
           block.style.padding = '1em'
           block.style.borderRadius = '3px'
           block.style.fontFamily = 'monospace'
-          console.warn('单个代码块高亮失败，应用基础样式:', e)
         }
       })
     })
-  } catch (e) {
-    console.error('代码高亮处理失败:', e)
-  }
+  } catch (e) {}
 }
 
 // 全面的Markdown样式修复函数
@@ -1304,9 +1574,7 @@ const applyMarkdownStyleFixes = () => {
     italicElements.forEach(italic => {
       italic.style.fontStyle = 'italic'
     })
-  } catch (e) {
-    console.warn('应用Markdown样式修复失败:', e)
-  }
+  } catch (e) {}
 }
 
 const formatTime = (timestamp) => {
@@ -1341,6 +1609,43 @@ const handleLogout = async () => {
   } catch {
   }
 }
+
+const handleAuthAction = () => {
+  if (userStore.userInfo) {
+    handleLogout()
+  } else {
+    router.push('/login')
+  }
+}
+
+const openProfileDialog = () => {
+  if (!userStore.userInfo) return
+  profileForm.value = {
+    id: displayUserId.value,
+    userName: userStore.userInfo.userName,
+    userAccount: userStore.userInfo.userAccount,
+    userAvatar: userStore.userInfo.userAvatar
+  }
+  profileDialogVisible.value = true
+}
+
+const handleSaveProfile = async () => {
+  if (!userStore.userInfo) return
+  profileSaving.value = true
+  try {
+    const payload = {
+      userName: profileForm.value.userName,
+      userAccount: profileForm.value.userAccount,
+      userAvatar: profileForm.value.userAvatar
+    }
+    const success = await userStore.updateProfile(payload)
+    if (success) {
+      profileDialogVisible.value = false
+    }
+  } finally {
+    profileSaving.value = false
+  }
+}
 </script>
 
 <style lang="scss" scoped>
@@ -1350,8 +1655,21 @@ const handleLogout = async () => {
   overflow: hidden;
 }
 
+.expand-sidebar-btn {
+  position: fixed;
+  left: 16px;
+  top: 16px;
+  z-index: 200;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  background: #fff;
+  
+  &:hover {
+    background: #f5f5f5;
+  }
+}
+
 .sidebar {
-  width: 280px;
+  width: 260px;
   background: #f7f7f8;
   border-right: 1px solid #e5e5e6;
   display: flex;
@@ -1370,23 +1688,38 @@ const handleLogout = async () => {
 .sidebar-header {
   padding: 16px;
   border-bottom: 1px solid #e5e5e6;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
   
   .logo-container {
     display: flex;
     align-items: center;
     gap: 12px;
-    margin-bottom: 12px;
+    position: relative;
     
     .logo-img {
-      width: 32px;
-      height: 32px;
+      width: 50px;
+      height: 50px;
       object-fit: contain;
+      flex-shrink: 0;
     }
     
     .logo {
-      font-size: 20px;
-      margin: 0;
-      color: #333;
+      font-size: 22px;
+      margin: 0 0 0 6px;
+      font-weight: 700;
+      letter-spacing: 2px;
+      flex: 1;
+      color: #5f7f94; // 贴近 logo 的灰蓝色
+      text-shadow: 0 0 6px rgba(95, 127, 148, 0.18);
+    }
+    
+    .collapse-sidebar-btn {
+      margin-left: auto;
+      flex-shrink: 0;
+      transform: scale(1.2);
+      margin-right: -4px;
     }
   }
   
@@ -1458,31 +1791,81 @@ const handleLogout = async () => {
 .sidebar-footer {
   padding: 16px;
   border-top: 1px solid #e5e5e6;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.user-quick-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.85);
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: border-color 0.2s ease, background 0.2s ease, box-shadow 0.2s ease;
   
-  .user-info {
-    display: flex;
-    align-items: center;
-    gap: 12px;
+  &:hover {
+    border-color: #d0d7de;
+    background: #fff;
+    box-shadow: 0 10px 24px rgba(95, 127, 148, 0.2);
+  }
+}
+
+.user-meta {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  
+  .user-name {
+    font-size: 14px;
+    font-weight: 600;
+    color: #2d3648;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  
+  .user-hint {
+    font-size: 12px;
+    color: #909399;
+  }
+}
+
+.user-auth-btn {
+  border-radius: 999px;
+  font-weight: 600;
+  padding: 4px 16px;
+  transition: all 0.2s ease;
+  border-width: 1px;
+  box-shadow: none;
+  
+  &.is-login {
+    background: linear-gradient(135deg, #22c1a1, #0f9d7a);
+    border-color: #10a37f;
+    color: #fff;
+    box-shadow: 0 12px 24px rgba(16, 163, 127, 0.28);
     
-    .user-details {
-      flex: 1;
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      min-width: 0;
+    &:hover {
+      background: linear-gradient(135deg, #1fb591, #0d886a);
+      border-color: #0d886a;
     }
+  }
+  
+  &.is-logout {
+    background: #fff;
+    border-color: #e64b42;
+    color: #e64b42;
+    box-shadow: inset 0 0 0 1px rgba(230, 75, 66, 0.08), 0 12px 22px rgba(230, 75, 66, 0.2);
     
-    .user-name {
-      flex: 1;
-      font-size: 14px;
-      color: #333;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-    
-    .logout-btn {
-      flex-shrink: 0;
+    &:hover {
+      background: #e64b42;
+      color: #fff;
+      border-color: #e64b42;
+      box-shadow: 0 14px 26px rgba(230, 75, 66, 0.32);
     }
   }
 }
@@ -1493,6 +1876,7 @@ const handleLogout = async () => {
   flex-direction: column;
   background: #fff;
   position: relative;
+  overflow: hidden;
 }
 
 .mobile-header {
@@ -1514,8 +1898,12 @@ const handleLogout = async () => {
     }
     
     .mobile-title {
-      font-size: 18px;
+      font-size: 20px;
       margin: 0;
+      font-weight: 700;
+      letter-spacing: 1.5px;
+      color: #5f7f94;
+      text-shadow: 0 0 6px rgba(95, 127, 148, 0.16);
     }
   }
 }
@@ -1523,18 +1911,34 @@ const handleLogout = async () => {
 .message-list {
   flex: 1;
   overflow-y: auto;
-  padding: 24px;
+  padding: 24px 56px 140px;
   display: flex;
   flex-direction: column;
   gap: 24px;
+  
+  &.has-messages {
+    justify-content: flex-start;
+  }
+  
+  &.first-message {
+    padding-top: 80px;
+  }
+  
+  &:not(.has-messages) {
+    justify-content: center;
+    align-items: center;
+  }
 }
 
 .message-item {
   display: flex;
   gap: 12px;
+  align-items: flex-start;
+  width: 100%;
   
   &.user {
     flex-direction: row-reverse;
+    padding-right: 36px;
     
     .message-content {
       background: #007aff;
@@ -1544,6 +1948,8 @@ const handleLogout = async () => {
   }
   
   &.assistant {
+    padding-left: 48px;
+    
     .message-content {
       background: #f1f1f3;
       color: #333;
@@ -1556,7 +1962,7 @@ const handleLogout = async () => {
   }
   
   .message-content {
-    max-width: 70%;
+    max-width: 78%;
     padding: 12px 16px;
     word-wrap: break-word;
     
@@ -1734,30 +2140,282 @@ const handleLogout = async () => {
   }
 }
 
+.initial-input-container {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 96%;
+  max-width: 820px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 18px;
+  z-index: 10;
+  
+  .initial-prompt {
+    font-size: 28px;
+    font-weight: 700;
+    letter-spacing: 1.2px;
+    text-align: center;
+    margin-bottom: 10px;
+    line-height: 1.3;
+    color: #4f6a7d; // 比 logo 文案稍深一点的灰蓝色，增强可读性
+    text-shadow: 0 4px 14px rgba(79, 106, 125, 0.22);
+  }
+  
+  .initial-input-wrapper {
+    width: 100%;
+  }
+}
+
+.chat-input-shell {
+  position: relative;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  border-radius: 42px;
+  background: #f9f9fb;
+  border: 1px solid #b5c0cf;
+  padding: 4px 16px;
+  box-shadow: 0 16px 36px rgba(15, 23, 42, 0.08);
+  transition: background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.chat-input-shell--initial {
+  backdrop-filter: blur(8px);
+}
+
+.chat-input-shell:focus-within {
+  background: #fff;
+  border-color: #5f7f94;
+  box-shadow: 0 24px 56px rgba(95, 127, 148, 0.25);
+}
+
+.chat-mode-switch {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  width: auto;
+}
+
+.chat-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-left: auto;
+}
+
+.chat-textarea {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  
+  :deep(.el-textarea__inner) {
+    width: 100%;
+    text-align: left;
+    background: transparent;
+    border: none;
+    box-shadow: none;
+    resize: none;
+    height: 38px;
+    min-height: 38px;
+    line-height: 38px;
+    padding: 0;
+    padding-left: 14px;
+    font-size: 15px;
+    color: #1f1f1f;
+    
+    &:focus {
+      border: none;
+      box-shadow: none;
+    }
+    
+    &::placeholder {
+      text-align: left;
+    }
+  }
+}
+
+.chat-send-btn {
+  width: 44px;
+  height: 44px;
+  background: #4f6a7d;
+  border-color: #4f6a7d;
+  color: #fff;
+  box-shadow: 0 14px 28px rgba(79, 106, 125, 0.35);
+  flex-shrink: 0;
+  transition: background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+  
+  &:hover {
+    background: #44596d;
+    border-color: #44596d;
+  }
+  
+  &.is-disabled {
+    background: #d5d7de;
+    border-color: #d5d7de;
+    box-shadow: none;
+  }
+}
+
+.chat-input-shell:focus-within .chat-send-btn:not(.is-disabled) {
+  background: #6f8daa;
+  border-color: #6f8daa;
+  box-shadow: 0 18px 36px rgba(111, 141, 170, 0.35);
+}
+
+.input-area-wrapper {
+  position: relative;
+  flex-shrink: 0;
+  padding-bottom: 32px;
+}
+
 .input-area {
-  padding: 16px;
+  padding: 0 56px 0;
   border-top: 1px solid #e5e5e6;
   background: #fff;
 }
 
 .input-wrapper {
+  margin-left: 48px;
+  margin-right: 36px;
+}
+
+.mode-dropdown {
+  position: relative;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  width: auto;
+}
+
+.mode-card {
+  border-radius: 999px;
+  height: 40px;
+  padding: 0 4px;
+  border: 1px solid #d0d7de;
+  background: rgba(255, 255, 255, 0.95);
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 6px;
+  cursor: pointer;
+  transition: all 0.25s ease;
+  box-shadow: 0 6px 16px rgba(15, 23, 42, 0.08);
+  appearance: none;
+}
+
+.mode-card:hover {
+  border-color: #10a37f;
+  box-shadow: 0 12px 28px rgba(16, 163, 127, 0.2);
+  transform: translateY(-1px);
+}
+
+.mode-card:focus-visible {
+  outline: 2px solid rgba(16, 163, 127, 0.4);
+  outline-offset: 2px;
+}
+
+.mode-card.mode-card-current {
+  border: 1px solid rgba(16, 163, 127, 0.35);
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.98), rgba(234, 252, 246, 0.95));
+}
+
+.mode-card.mode-card-option {
+  border: 1px dashed rgba(0, 0, 0, 0.08);
+  background: #fff;
+  box-shadow: none;
+}
+
+.mode-dropdown-panel {
+  position: absolute;
+  bottom: calc(100% + 10px);
+  top: auto;
+  left: 0;
+  right: auto;
+  min-width: 240px;
+  border-radius: 16px;
+  border: 1px solid #e3e6ef;
+  background: #fff;
+  padding: 8px;
+  box-shadow: 0 20px 40px rgba(20, 43, 77, 0.12);
+  z-index: 20;
+}
+
+.mode-card-left {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.mode-card-icon {
+  width: 28px;
+  height: 28px;
+  border-radius: 12px;
+  flex-shrink: 0;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.06);
+}
+
+.mode-card-text {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  
-  .message-input {
-    width: 100%;
-  }
-  
-  .input-actions {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    
-    .send-btn {
-      flex-shrink: 0;
-    }
-  }
+  align-items: flex-start;
+  gap: 2px;
+  color: #2d3648;
+}
+
+.mode-card-title {
+  font-size: 14px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.mode-card-desc {
+  font-size: 11px;
+  color: #6b7688;
+}
+
+.mode-chip {
+  font-size: 11px;
+  color: #007aff;
+  background: rgba(0, 122, 255, 0.12);
+  padding: 2px 6px;
+  border-radius: 999px;
+  font-weight: 500;
+}
+
+.mode-card-arrow {
+  color: #8092ad;
+  font-size: 16px;
+  margin-left: auto;
+}
+
+.mode-dropdown-fade-enter-active,
+.mode-dropdown-fade-leave-active {
+  transition: all 0.2s ease;
+}
+
+.mode-dropdown-fade-enter-from,
+.mode-dropdown-fade-leave-to {
+  opacity: 0;
+  transform: translateY(4px);
+}
+
+.input-footer-tip {
+  text-align: center;
+  font-size: 12px;
+  color: #999;
+  position: absolute;
+  bottom: 10px;
+  left: 0;
+  right: 0;
+  width: 100%;
 }
 
 @media (max-width: 768px) {
@@ -1765,10 +2423,39 @@ const handleLogout = async () => {
     display: flex;
   }
   
+  .expand-sidebar-btn {
+    display: none; // 移动端使用 mobile-header 中的按钮
+  }
+  
   .sidebar {
     &.collapsed {
       transform: translateX(-100%);
     }
+  }
+  
+  .initial-input-container {
+    width: 95%;
+    max-width: 100%;
+    
+    .initial-prompt {
+      font-size: 22px;
+    }
+  }
+  
+  .message-list {
+    padding: 16px 16px 120px;
+  }
+  
+  .message-item {
+    padding: 0 !important;
+  }
+  
+  .input-area {
+    padding: 4px 16px 6px;
+  }
+  
+  .chat-input-shell {
+    padding: 12px 80px 52px 14px;
   }
 }
 </style>

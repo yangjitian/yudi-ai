@@ -11,6 +11,7 @@ import com.yudi.ai.mapper.UserMapper;
 import com.yudi.ai.model.dto.LoginRequestDTO;
 import com.yudi.ai.model.vo.LoginResponseVO;
 import com.yudi.ai.model.dto.UserRegisterRequestDTO;
+import com.yudi.ai.model.dto.UserUpdateRequestDTO;
 import com.yudi.ai.model.entity.User;
 import com.yudi.ai.service.UserService;
 import com.yudi.ai.utils.UserHolder;
@@ -143,6 +144,70 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
         responseVO.setUserAccount(user.getUserAccount());
         responseVO.setUserName(user.getUserName());
         responseVO.setUserAvatar(user.getUserAvatar());
+        return responseVO;
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public LoginResponseVO updateCurrentUser(UserUpdateRequestDTO userUpdateRequestDTO, String token) {
+        // 1. 获取当前登录用户
+        User currentUser = UserHolder.getUser();
+        ThrowUtils.throwIf(currentUser == null, ErrorCode.NOT_LOGIN, "用户未登录");
+
+        boolean needUpdate = false;
+
+        // 2. 更新昵称
+        if (StrUtil.isNotBlank(userUpdateRequestDTO.getUserName())) {
+            String newName = StrUtil.trim(userUpdateRequestDTO.getUserName());
+            if (!StrUtil.equals(newName, currentUser.getUserName())) {
+                currentUser.setUserName(newName);
+                needUpdate = true;
+            }
+        }
+
+        // 3. 更新邮箱（userAccount），需要校验唯一性
+        if (StrUtil.isNotBlank(userUpdateRequestDTO.getUserAccount())) {
+            String newAccount = StrUtil.trim(userUpdateRequestDTO.getUserAccount());
+            if (!StrUtil.equals(newAccount, currentUser.getUserAccount())) {
+                long count = this.lambdaQuery()
+                        .eq(User::getUserAccount, newAccount)
+                        .ne(User::getId, currentUser.getId())
+                        .count();
+                ThrowUtils.throwIf(count > 0, ErrorCode.USER_ACCOUNT_EXISTS, "该邮箱已被其他账号使用");
+                currentUser.setUserAccount(newAccount);
+                needUpdate = true;
+            }
+        }
+
+        // 4. 更新头像
+        if (StrUtil.isNotBlank(userUpdateRequestDTO.getUserAvatar())) {
+            String newAvatar = StrUtil.trim(userUpdateRequestDTO.getUserAvatar());
+            if (!StrUtil.equals(newAvatar, currentUser.getUserAvatar())) {
+                currentUser.setUserAvatar(newAvatar);
+                needUpdate = true;
+            }
+        }
+
+        ThrowUtils.throwIf(!needUpdate, ErrorCode.PARAMETER_ERROR, "没有需要更新的内容");
+
+        // 5. 持久化到数据库
+        boolean updated = this.updateById(currentUser);
+        ThrowUtils.throwIf(!updated, ErrorCode.OPERATION_FAILED, "更新用户信息失败");
+
+        // 6. 同步更新 Redis 中的用户信息，保持 Token 对应的数据最新
+        if (StrUtil.isNotBlank(token)) {
+            String tokenKey = LOGIN_TOKEN_KEY_PREFIX + token;
+            stringRedisTemplate.opsForValue().set(tokenKey, JSONUtil.toJsonStr(currentUser), 30, TimeUnit.MINUTES);
+        }
+
+        // 7. 构建返回对象
+        LoginResponseVO responseVO = new LoginResponseVO();
+        responseVO.setId(currentUser.getId());
+        responseVO.setUserAccount(currentUser.getUserAccount());
+        responseVO.setUserName(currentUser.getUserName());
+        responseVO.setUserAvatar(currentUser.getUserAvatar());
+        responseVO.setToken(token);
+
         return responseVO;
     }
 }

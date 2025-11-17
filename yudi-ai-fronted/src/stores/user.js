@@ -1,11 +1,45 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import { login, sendLoginCode, register, sendRegisterCode, logout as apiLogout, getCurrentUser } from '@/api/user'
+import { login, sendLoginCode, register, sendRegisterCode, logout as apiLogout, getCurrentUser, updateUserProfile } from '@/api/user'
 import { ElMessage } from 'element-plus'
+
+const formatUserId = (value) => {
+  if (value === null || value === undefined) return ''
+  return String(value)
+}
+
+const normalizeUserInfo = (data) => {
+  if (!data) return null
+  return {
+    id: formatUserId(data.id),
+    userAccount: data.userAccount,
+    userName: data.userName,
+    userAvatar: data.userAvatar
+  }
+}
+
+const getStoredUserInfo = () => {
+  try {
+    const cached = JSON.parse(localStorage.getItem('userInfo') || 'null')
+    return normalizeUserInfo(cached)
+  } catch {
+    return null
+  }
+}
 
 export const useUserStore = defineStore('user', () => {
   const token = ref(localStorage.getItem('token') || '')
-  const userInfo = ref(JSON.parse(localStorage.getItem('userInfo') || 'null'))
+  const userInfo = ref(getStoredUserInfo())
+
+  const persistUserInfo = (data) => {
+    const normalized = normalizeUserInfo(data)
+    userInfo.value = normalized
+    if (normalized) {
+      localStorage.setItem('userInfo', JSON.stringify(normalized))
+    } else {
+      localStorage.removeItem('userInfo')
+    }
+  }
 
   const isLoggedIn = computed(() => !!token.value)
 
@@ -46,14 +80,8 @@ export const useUserStore = defineStore('user', () => {
       const response = await login(loginData)
       if (response.code === 200 && response.data) {
         token.value = response.data.token
-        userInfo.value = {
-          id: response.data.id,
-          userAccount: response.data.userAccount,
-          userName: response.data.userName,
-          userAvatar: response.data.userAvatar
-        }
+        persistUserInfo(response.data)
         localStorage.setItem('token', token.value)
-        localStorage.setItem('userInfo', JSON.stringify(userInfo.value))
         ElMessage.success('登录成功')
         return true
       } else {
@@ -90,9 +118,8 @@ export const useUserStore = defineStore('user', () => {
     } catch (_) {
     } finally {
       token.value = ''
-      userInfo.value = null
+      persistUserInfo(null)
       localStorage.removeItem('token')
-      localStorage.removeItem('userInfo')
     }
   }
 
@@ -105,14 +132,8 @@ export const useUserStore = defineStore('user', () => {
       const response = await getCurrentUser()
       if (response.code === 200 && response.data) {
         token.value = response.data.token || token.value
-        userInfo.value = {
-          id: response.data.id,
-          userAccount: response.data.userAccount,
-          userName: response.data.userName,
-          userAvatar: response.data.userAvatar
-        }
+        persistUserInfo(response.data)
         localStorage.setItem('token', token.value)
-        localStorage.setItem('userInfo', JSON.stringify(userInfo.value))
         return true
       } else {
         token.value = ''
@@ -130,6 +151,27 @@ export const useUserStore = defineStore('user', () => {
     }
   }
 
+  const updateProfile = async (payload) => {
+    try {
+      const response = await updateUserProfile(payload)
+      if (response.code === 200 && response.data) {
+        persistUserInfo(response.data)
+        if (response.data.token) {
+          token.value = response.data.token
+          localStorage.setItem('token', token.value)
+        }
+        ElMessage.success(response.message || '资料更新成功')
+        return true
+      } else {
+        ElMessage.error(response.message || '资料更新失败')
+        return false
+      }
+    } catch (error) {
+      ElMessage.error(error.message || '资料更新失败')
+      return false
+    }
+  }
+
   return {
     token,
     userInfo,
@@ -139,7 +181,8 @@ export const useUserStore = defineStore('user', () => {
     userLogin,
     userRegister,
     userLogout,
-    restoreUserState
+    restoreUserState,
+    updateProfile
   }
 })
 

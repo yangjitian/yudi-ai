@@ -3,14 +3,11 @@ package com.yudi.ai.controller;
 import cn.hutool.core.util.StrUtil;
 import com.yudi.ai.common.BaseResponse;
 import com.yudi.ai.common.ErrorCode;
-import com.yudi.ai.exception.BusinessException;
-import com.yudi.ai.exception.ThrowUtils;
 import com.yudi.ai.model.dto.LoginRequestDTO;
 import com.yudi.ai.model.vo.LoginResponseVO;
 import com.yudi.ai.model.dto.UserRegisterRequestDTO;
-import com.yudi.ai.model.entity.User;
+import com.yudi.ai.model.dto.UserUpdateRequestDTO;
 import com.yudi.ai.service.UserService;
-import com.yudi.ai.utils.UserHolder;
 import jakarta.annotation.Resource;
 import jakarta.validation.Valid;
 import lombok.extern.slf4j.Slf4j;
@@ -75,5 +72,23 @@ public class UserController {
     public BaseResponse<LoginResponseVO> getCurrentUser() {
         LoginResponseVO loginResponseVO = userService.getCurrentUser();
         return BaseResponse.success(loginResponseVO);
+    }
+
+    /**
+     * 修改当前登录用户资料
+     *
+     * @param userUpdateRequestDTO 修改请求
+     * @param authHeader           授权头，用于获取当前 token
+     * @return 最新用户信息
+     */
+    @PostMapping("/update")
+    public BaseResponse<LoginResponseVO> updateCurrentUser(@Valid @RequestBody UserUpdateRequestDTO userUpdateRequestDTO,
+                                                           @RequestHeader("Authorization") String authHeader) {
+        String token = authHeader;
+        if (StrUtil.isNotBlank(authHeader) && authHeader.startsWith("Bearer ")) {
+            token = authHeader.substring(7);
+        }
+        LoginResponseVO responseVO = userService.updateCurrentUser(userUpdateRequestDTO, token);
+        return BaseResponse.success("更新成功", responseVO);
     }
 }
