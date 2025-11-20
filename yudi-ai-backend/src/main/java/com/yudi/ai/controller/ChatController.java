@@ -66,6 +66,8 @@ public class ChatController {
     // AI模型及组件
     private ChatClient dashScopeChatClient;
     private final DocumentRetriever pgRetriever;
+    // 阿里云知识库的文档检索器。
+//    private final DocumentRetriever cloudRetriever;
 
     // 用于延迟初始化的字段
     private final ChatClient.Builder chatClientBuilder;
@@ -82,6 +84,7 @@ public class ChatController {
     }
 
     public ChatController(ChatClient.Builder chatClientBuilder,
+//                          DocumentRetriever documentRetriever,
                           VectorStore pgVectorVectorStore,
                           Object[] allToolInstances) {
         this.pgRetriever = VectorStoreDocumentRetriever.builder()

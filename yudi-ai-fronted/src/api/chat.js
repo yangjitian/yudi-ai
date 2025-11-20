@@ -44,7 +44,7 @@ export const chat = ({ query, mode, conversationId }) => {
 
 export const deleteConversationApi = (conversationId) => {
   return request({
-    url: '/conversation/delete',
+    url: '/history/conversation/delete',
     method: 'post',
     params: { conversationId }
   })
@@ -52,14 +52,14 @@ export const deleteConversationApi = (conversationId) => {
 
 export const getConversations = () => {
   return request({
-    url: '/conversations',
+    url: '/history/conversations',
     method: 'get'
   })
 }
 
 export const getConversationHistory = (conversationId) => {
   return request({
-    url: '/conversation/history',
+    url: '/history/conversation/get',
     method: 'get',
     params: { conversationId }
   })
@@ -67,7 +67,7 @@ export const getConversationHistory = (conversationId) => {
 
 export const createConversationId = () => {
   return request({
-    url: '/conversation/new',
+    url: '/history/conversation/new',
     method: 'post'
   })
 }

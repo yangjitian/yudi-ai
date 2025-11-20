@@ -20,6 +20,7 @@ import java.util.List;
  */
 @Slf4j
 @RestController
+@RequestMapping("/history")
 public class ConversationController {
 
     @Resource
@@ -47,7 +48,7 @@ public class ConversationController {
      * @param conversationId 会话ID
      * @return 会话历史
      */
-    @GetMapping("/conversation/history")
+    @GetMapping("/conversation/get")
     public BaseResponse<List<ConversationMemoryVO>> getConversationHistory(@RequestParam("conversationId") String conversationId) {
         if (StrUtil.isBlank(conversationId)) {
             throw new BusinessException(ErrorCode.PARAMETER_NULL, "会话ID不能为空");

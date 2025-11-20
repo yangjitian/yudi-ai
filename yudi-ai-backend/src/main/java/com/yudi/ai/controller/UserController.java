@@ -2,7 +2,6 @@ package com.yudi.ai.controller;
 
 import cn.hutool.core.util.StrUtil;
 import com.yudi.ai.common.BaseResponse;
-import com.yudi.ai.common.ErrorCode;
 import com.yudi.ai.model.dto.LoginRequestDTO;
 import com.yudi.ai.model.vo.LoginResponseVO;
 import com.yudi.ai.model.dto.UserRegisterRequestDTO;
@@ -11,7 +10,9 @@ import com.yudi.ai.service.UserService;
 import jakarta.annotation.Resource;
 import jakarta.validation.Valid;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 @Slf4j
 @RestController
@@ -90,5 +91,17 @@ public class UserController {
         }
         LoginResponseVO responseVO = userService.updateCurrentUser(userUpdateRequestDTO, token);
         return BaseResponse.success("更新成功", responseVO);
+    }
+
+    /**
+     * 上传用户头像
+     *
+     * @param file 头像文件
+     * @return 头像访问地址
+     */
+    @PostMapping(value = "/avatar/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public BaseResponse<String> uploadAvatar(@RequestPart("file") MultipartFile file) {
+        String avatarUrl = userService.uploadAvatar(file);
+        return BaseResponse.success("上传成功", avatarUrl);
     }
 }

@@ -1,9 +1,20 @@
 package com.yudi.ai.service.impl;
 
+import cn.hutool.core.collection.CollUtil;
+import cn.hutool.core.date.DateUtil;
+import cn.hutool.core.util.IdUtil;
 import cn.hutool.core.util.StrUtil;
 import cn.hutool.json.JSONUtil;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import com.qcloud.cos.COSClient;
+import com.qcloud.cos.ClientConfig;
+import com.qcloud.cos.auth.BasicCOSCredentials;
+import com.qcloud.cos.auth.COSCredentials;
+import com.qcloud.cos.exception.CosClientException;
+import com.qcloud.cos.model.ObjectMetadata;
+import com.qcloud.cos.model.PutObjectRequest;
+import com.qcloud.cos.region.Region;
 import com.yudi.ai.common.ErrorCode;
 import com.yudi.ai.exception.BusinessException;
 import com.yudi.ai.exception.ThrowUtils;
@@ -16,12 +27,19 @@ import com.yudi.ai.model.entity.User;
 import com.yudi.ai.service.UserService;
 import com.yudi.ai.utils.UserHolder;
 import com.yudi.ai.utils.UsernameGenerator;
+import jakarta.annotation.PostConstruct;
+import jakarta.annotation.PreDestroy;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 
+import java.io.IOException;
+import java.io.InputStream;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
@@ -43,8 +61,43 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
 
     // 用户登录token Redis key前缀
     public static final String LOGIN_TOKEN_KEY_PREFIX = "user:login:token:";
+    // 换绑校验通过标识 key 前缀
+    private static final String CHANGE_EMAIL_VERIFIED_FLAG_PREFIX = "change_email:verified:";
+    private static final long MAX_AVATAR_SIZE = 4L * 1024 * 1024;
+    private static final Set<String> ALLOWED_AVATAR_SUFFIX = CollUtil.newHashSet("jpg", "jpeg", "png", "gif", "bmp", "webp");
+    private static final String PROJECT_NAME = "yudiAi";
 
+    @Value("${cos.client.host:}")
+    private String cosHost;
+    @Value("${cos.client.secretId:}")
+    private String cosSecretId;
+    @Value("${cos.client.secretKey:}")
+    private String cosSecretKey;
+    @Value("${cos.client.region:}")
+    private String cosRegion;
+    @Value("${cos.client.bucketName:}")
+    private String cosBucketName;
 
+    private COSClient cosClient;
+
+    @PostConstruct
+    public void initCosClient() {
+        if (StrUtil.hasBlank(cosHost, cosSecretId, cosSecretKey, cosRegion, cosBucketName)) {
+            log.warn("COS 配置不完整，头像上传功能将不可用");
+            return;
+        }
+        COSCredentials credentials = new BasicCOSCredentials(cosSecretId, cosSecretKey);
+        ClientConfig clientConfig = new ClientConfig(new Region(cosRegion));
+        this.cosClient = new COSClient(credentials, clientConfig);
+        log.info("COS 客户端初始化完成，bucketName={}", cosBucketName);
+    }
+
+    @PreDestroy
+    public void destroyCosClient() {
+        if (cosClient != null) {
+            cosClient.shutdown();
+        }
+    }
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -155,6 +208,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
         ThrowUtils.throwIf(currentUser == null, ErrorCode.NOT_LOGIN, "用户未登录");
 
         boolean needUpdate = false;
+        boolean emailUpdated = false;
 
         // 2. 更新昵称
         if (StrUtil.isNotBlank(userUpdateRequestDTO.getUserName())) {
@@ -169,6 +223,9 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
         if (StrUtil.isNotBlank(userUpdateRequestDTO.getUserAccount())) {
             String newAccount = StrUtil.trim(userUpdateRequestDTO.getUserAccount());
             if (!StrUtil.equals(newAccount, currentUser.getUserAccount())) {
+                String verifiedKey = CHANGE_EMAIL_VERIFIED_FLAG_PREFIX + currentUser.getId();
+                String verifiedFlag = stringRedisTemplate.opsForValue().get(verifiedKey);
+                ThrowUtils.throwIf(StrUtil.isBlank(verifiedFlag), ErrorCode.VERIFICATION_CODE_NOT_FOUND, "请先完成邮箱换绑验证");
                 long count = this.lambdaQuery()
                         .eq(User::getUserAccount, newAccount)
                         .ne(User::getId, currentUser.getId())
@@ -176,6 +233,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
                 ThrowUtils.throwIf(count > 0, ErrorCode.USER_ACCOUNT_EXISTS, "该邮箱已被其他账号使用");
                 currentUser.setUserAccount(newAccount);
                 needUpdate = true;
+                emailUpdated = true;
             }
         }
 
@@ -208,6 +266,49 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
         responseVO.setUserAvatar(currentUser.getUserAvatar());
         responseVO.setToken(token);
 
+        if (emailUpdated) {
+            stringRedisTemplate.delete(CHANGE_EMAIL_VERIFIED_FLAG_PREFIX + currentUser.getId());
+        }
+
         return responseVO;
+    }
+
+    @Override
+    public String uploadAvatar(MultipartFile file) {
+        ThrowUtils.throwIf(file == null || file.isEmpty(), ErrorCode.PARAMETER_NULL, "请上传头像文件");
+        ThrowUtils.throwIf(file.getSize() > MAX_AVATAR_SIZE, ErrorCode.PARAMETER_ERROR, "头像不能超过4MB");
+        ThrowUtils.throwIf(cosClient == null, ErrorCode.SYSTEM_ERROR, "存储服务未初始化");
+
+        User currentUser = UserHolder.getUser();
+        ThrowUtils.throwIf(currentUser == null, ErrorCode.NOT_LOGIN, "用户未登录");
+
+        String originalFilename = file.getOriginalFilename();
+        String suffix = StrUtil.blankToDefault(StrUtil.subAfter(originalFilename, ".", true), "").toLowerCase();
+        ThrowUtils.throwIf(!ALLOWED_AVATAR_SUFFIX.contains(suffix), ErrorCode.PARAMETER_ERROR, "仅支持常见的图片格式（jpg/png/jpeg/gif/bmp/webp）");
+
+        String datePath = DateUtil.format(DateUtil.date(), "yyyy/MM/dd");
+        String objectKey = StrUtil.format("{}/avatar/{}/{}/{}.{}",
+                PROJECT_NAME,
+                currentUser.getId(),
+                datePath,
+                IdUtil.fastSimpleUUID(),
+                suffix);
+
+        ObjectMetadata metadata = new ObjectMetadata();
+        metadata.setContentLength(file.getSize());
+        metadata.setContentType(StrUtil.blankToDefault(file.getContentType(), "application/octet-stream"));
+        metadata.addUserMetadata("project", PROJECT_NAME);
+
+        try (InputStream inputStream = file.getInputStream()) {
+            PutObjectRequest request = new PutObjectRequest(cosBucketName, objectKey, inputStream, metadata);
+            cosClient.putObject(request);
+        } catch (IOException | CosClientException e) {
+            log.error("用户头像上传失败，userId={}, fileName={}", currentUser.getId(), originalFilename, e);
+            throw new BusinessException(ErrorCode.SYSTEM_ERROR, "头像上传失败，请稍后重试");
+        }
+
+        ThrowUtils.throwIf(StrUtil.isBlank(cosHost), ErrorCode.SYSTEM_ERROR, "存储域名未配置");
+        String cleanHost = StrUtil.removeSuffix(cosHost, "/");
+        return cleanHost + "/" + objectKey;
     }
 }

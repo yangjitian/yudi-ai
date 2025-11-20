@@ -1,6 +1,17 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import { login, sendLoginCode, register, sendRegisterCode, logout as apiLogout, getCurrentUser, updateUserProfile } from '@/api/user'
+import {
+  login,
+  sendLoginCode,
+  register,
+  sendRegisterCode,
+  logout as apiLogout,
+  getCurrentUser,
+  updateUserProfile,
+  sendChangeAccountCode,
+  verifyChangeAccountCode,
+  uploadAvatar as apiUploadAvatar
+} from '@/api/user'
 import { ElMessage } from 'element-plus'
 
 const formatUserId = (value) => {
@@ -172,6 +183,24 @@ export const useUserStore = defineStore('user', () => {
     }
   }
 
+  const uploadAvatarFile = async (file) => {
+    try {
+      const formData = new FormData()
+      formData.append('file', file)
+      const response = await apiUploadAvatar(formData)
+      if (response.code === 200 && response.data) {
+        ElMessage.success(response.message || '头像上传成功')
+        return response.data
+      } else {
+        ElMessage.error(response.message || '头像上传失败')
+        return null
+      }
+    } catch (error) {
+      ElMessage.error(error.message || '头像上传失败')
+      return null
+    }
+  }
+
   return {
     token,
     userInfo,
@@ -182,7 +211,44 @@ export const useUserStore = defineStore('user', () => {
     userRegister,
     userLogout,
     restoreUserState,
-    updateProfile
+    updateProfile,
+    uploadAvatarFile,
+    /**
+     * 发送换绑邮箱验证码（发送到当前绑定邮箱）
+     */
+    sendChangeAccountVerificationCode: async () => {
+      try {
+        const response = await sendChangeAccountCode()
+        if (response.code === 200) {
+          ElMessage.success('验证码已发送到当前绑定邮箱')
+          return true
+        } else {
+          ElMessage.error(response.message || '发送验证码失败')
+          return false
+        }
+      } catch (error) {
+        ElMessage.error(error.message || '发送验证码失败')
+        return false
+      }
+    },
+    /**
+     * 校验换绑邮箱验证码
+     */
+    verifyChangeAccountVerificationCode: async (code) => {
+      try {
+        const response = await verifyChangeAccountCode({ code })
+        if (response.code === 200) {
+          ElMessage.success('验证码校验通过')
+          return true
+        } else {
+          ElMessage.error(response.message || '验证码校验失败')
+          return false
+        }
+      } catch (error) {
+        ElMessage.error(error.message || '验证码校验失败')
+        return false
+      }
+    }
   }
 })
 

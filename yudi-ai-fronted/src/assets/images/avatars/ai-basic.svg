@@ -1,0 +1,15 @@
+<svg width="96" height="96" viewBox="0 0 96 96" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="aiBasicGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#9ad6ff"/>
+      <stop offset="100%" stop-color="#3a8dff"/>
+    </linearGradient>
+  </defs>
+  <rect width="96" height="96" rx="24" fill="#f0f7ff"/>
+  <circle cx="48" cy="36" r="20" fill="url(#aiBasicGradient)"/>
+  <rect x="26" y="62" width="44" height="16" rx="8" fill="#d9e7ff"/>
+  <path d="M34 70c4 4 12 7 14 7s10-3 14-7" stroke="#1f5fe0" stroke-width="3" stroke-linecap="round" fill="none"/>
+  <circle cx="40" cy="38" r="4" fill="#fff"/>
+  <circle cx="56" cy="38" r="4" fill="#fff"/>
+</svg>
+

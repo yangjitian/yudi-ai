@@ -16,6 +16,21 @@ export const sendRegisterCode = (data) => {
   })
 }
 
+export const sendChangeAccountCode = () => {
+  return request({
+    url: '/email/send-change-account-code',
+    method: 'post'
+  })
+}
+
+export const verifyChangeAccountCode = (data) => {
+  return request({
+    url: '/email/verify-change-account-code',
+    method: 'post',
+    data
+  })
+}
+
 export const login = (data) => {
   return request({
     url: '/user/login',
@@ -54,5 +69,16 @@ export const updateUserProfile = (data) => {
     url: '/user/update',
     method: 'post',
     data
+  })
+}
+
+export const uploadAvatar = (formData) => {
+  return request({
+    url: '/user/avatar/upload',
+    method: 'post',
+    headers: {
+      'Content-Type': 'multipart/form-data'
+    },
+    data: formData
   })
 }

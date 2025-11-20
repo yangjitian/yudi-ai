@@ -1,0 +1,19 @@
+<svg width="96" height="96" viewBox="0 0 96 96" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="aiAgentOuter" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ffd6e8"/>
+      <stop offset="100%" stop-color="#f35ba6"/>
+    </linearGradient>
+    <linearGradient id="aiAgentInner" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#fff1fa"/>
+      <stop offset="100%" stop-color="#ffe0f1"/>
+    </linearGradient>
+  </defs>
+  <rect width="96" height="96" rx="24" fill="#fff8fb"/>
+  <circle cx="48" cy="40" r="24" fill="url(#aiAgentOuter)"/>
+  <circle cx="48" cy="40" r="12" fill="url(#aiAgentInner)" stroke="#f35ba6" stroke-width="2"/>
+  <path d="M24 70c4-10 16-16 24-16s20 6 24 16" stroke="#f35ba6" stroke-width="4" stroke-linecap="round" fill="none"/>
+  <circle cx="38" cy="38" r="4" fill="#fff"/>
+  <circle cx="58" cy="38" r="4" fill="#fff"/>
+</svg>
+

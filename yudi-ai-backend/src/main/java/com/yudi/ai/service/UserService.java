@@ -6,6 +6,7 @@ import com.yudi.ai.model.vo.LoginResponseVO;
 import com.yudi.ai.model.dto.UserRegisterRequestDTO;
 import com.yudi.ai.model.dto.UserUpdateRequestDTO;
 import com.yudi.ai.model.entity.User;
+import org.springframework.web.multipart.MultipartFile;
 
 /**
  * 用户服务接口
@@ -50,4 +51,12 @@ public interface UserService extends IService<User> {
      * @return 最新的用户信息
      */
     LoginResponseVO updateCurrentUser(UserUpdateRequestDTO userUpdateRequestDTO, String token);
+
+    /**
+     * 上传用户头像到对象存储
+     *
+     * @param file 头像文件
+     * @return 头像访问地址
+     */
+    String uploadAvatar(MultipartFile file);
 }

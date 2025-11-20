@@ -72,7 +72,7 @@
         <div
           class="user-quick-info"
           v-if="!sidebarCollapsed"
-          @click="toggleUserDetails"
+          @click="handleUserAreaClick"
         >
           <el-avatar :size="36" :src="userStore.userInfo?.userAvatar">
             {{ userStore.userInfo?.userName?.charAt(0) || 'U' }}
@@ -132,10 +132,20 @@
           v-show="!(message.role === 'assistant' && !message.content && chatStore.isLoading)"
         >
           <div class="message-avatar">
-            <el-avatar v-if="message.role === 'user'" :size="32">
+            <el-avatar
+              v-if="message.role === 'user'"
+              :size="32"
+              :src="userAvatarForChat"
+            >
               {{ userStore.userInfo?.userName?.charAt(0) || 'U' }}
             </el-avatar>
-            <el-avatar v-else :size="32" :icon="ChatDotRound" />
+            <el-avatar
+              v-else
+              :size="32"
+              :src="aiAvatarForChat"
+            >
+              AI
+            </el-avatar>
           </div>
           <div class="message-content">
             <div
@@ -157,7 +167,7 @@
           class="message-item assistant"
         >
           <div class="message-avatar">
-            <el-avatar :size="32" :icon="ChatDotRound" />
+            <el-avatar :size="32" :src="aiAvatarForChat">AI</el-avatar>
           </div>
           <div class="message-content">
             <div class="typing-indicator">
@@ -178,14 +188,25 @@
               v-model="inputText"
               type="textarea"
               :rows="2"
+              :autosize="textareaAutoSize"
               placeholder="输入您的问题..."
               @keydown.enter.exact.prevent="handleSendMessage"
+              @keydown="handleTextareaKeydown"
+              @keyup="handleTextareaKeyup"
+              @compositionstart="handleCompositionStart"
+              @compositionend="handleCompositionEnd"
+              @focus="handleTextareaFocus"
+              @blur="handleTextareaBlur"
               :disabled="chatStore.isLoading"
               class="chat-textarea"
             />
+            <div class="chat-placeholder" v-if="shouldShowPlaceholder">输入您的问题...</div>
             <div class="chat-actions">
-              <div class="chat-mode-switch">
-                <div class="mode-dropdown" :class="{ open: isModeDropdownOpen }">
+              <div class="chat-mode-switch" ref="modeDropdownRef">
+                <div
+                  class="mode-dropdown"
+                  :class="{ open: isModeDropdownOpen, 'mode-dropdown--down': chatStore.messages.length === 0 }"
+                >
                   <button type="button" class="mode-card mode-card-current" @click="toggleModeDropdown">
                     <div class="mode-card-left">
                       <img
@@ -210,10 +231,11 @@
                   <transition name="mode-dropdown-fade">
                     <div class="mode-dropdown-panel" v-show="isModeDropdownOpen">
                       <button
-                        v-for="option in alternateModes"
+                        v-for="option in dropdownModeOptions"
                         :key="option.key"
                         type="button"
                         class="mode-card mode-card-option"
+                        :class="{ 'is-active': option.key === currentModeOption.key }"
                         @click="handleSelectMode(option)"
                       >
                         <div class="mode-card-left">
@@ -226,6 +248,7 @@
                           <div class="mode-card-text">
                             <div class="mode-card-title">
                               {{ option.title }}
+                              <span class="mode-chip" v-if="option.key === currentModeOption.key">当前</span>
                             </div>
                             <div class="mode-card-desc">{{ option.description }}</div>
                           </div>
@@ -259,13 +282,21 @@
                 v-model="inputText"
                 type="textarea"
                 :rows="2"
+                :autosize="textareaAutoSize"
                 placeholder="输入您的问题..."
                 @keydown.enter.exact.prevent="handleSendMessage"
+                @keydown="handleTextareaKeydown"
+                @keyup="handleTextareaKeyup"
+              @compositionstart="handleCompositionStart"
+              @compositionend="handleCompositionEnd"
+                @focus="handleTextareaFocus"
+                @blur="handleTextareaBlur"
                 :disabled="chatStore.isLoading"
                 class="chat-textarea"
               />
+            <div class="chat-placeholder" v-if="shouldShowPlaceholder">输入您的问题...</div>
               <div class="chat-actions">
-                <div class="chat-mode-switch">
+                <div class="chat-mode-switch" ref="modeDropdownRef">
                   <div class="mode-dropdown" :class="{ open: isModeDropdownOpen }">
                     <button type="button" class="mode-card mode-card-current" @click="toggleModeDropdown">
                       <div class="mode-card-left">
@@ -291,10 +322,11 @@
                     <transition name="mode-dropdown-fade">
                       <div class="mode-dropdown-panel" v-show="isModeDropdownOpen">
                         <button
-                          v-for="option in alternateModes"
+                          v-for="option in dropdownModeOptions"
                           :key="option.key"
                           type="button"
                           class="mode-card mode-card-option"
+                          :class="{ 'is-active': option.key === currentModeOption.key }"
                           @click="handleSelectMode(option)"
                         >
                           <div class="mode-card-left">
@@ -307,6 +339,7 @@
                             <div class="mode-card-text">
                               <div class="mode-card-title">
                                 {{ option.title }}
+                                <span class="mode-chip" v-if="option.key === currentModeOption.key">当前</span>
                               </div>
                               <div class="mode-card-desc">{{ option.description }}</div>
                             </div>
@@ -336,49 +369,24 @@
       </div>
     </main>
 
-    <el-dialog
-    v-model="profileDialogVisible"
-    title="编辑个人资料"
-    width="420px"
-    :close-on-click-modal="false"
-  >
-    <el-form :model="profileForm" label-width="80px">
-      <el-form-item label="用户ID">
-        <el-input v-model="profileForm.id" disabled />
-      </el-form-item>
-      <el-form-item label="昵称">
-        <el-input v-model="profileForm.userName" placeholder="请输入昵称" />
-      </el-form-item>
-      <el-form-item label="邮箱">
-        <el-input v-model="profileForm.userAccount" placeholder="请输入邮箱" />
-      </el-form-item>
-      <el-form-item label="头像URL">
-        <el-input v-model="profileForm.userAvatar" placeholder="请输入头像图片地址" />
-      </el-form-item>
-    </el-form>
-    <template #footer>
-      <span class="dialog-footer">
-        <el-button @click="profileDialogVisible = false">取 消</el-button>
-        <el-button type="primary" :loading="profileSaving" @click="handleSaveProfile">
-          保 存
-        </el-button>
-      </span>
-    </template>
-  </el-dialog>
   </div>
 </template>
 
 <script setup>
-import { ref, nextTick, watch, onMounted, computed } from 'vue'
+import { ref, nextTick, watch, onMounted, onBeforeUnmount, computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useUserStore } from '@/stores/user'
 import { useChatStore } from '@/stores/chat'
 import { getCurrentUser } from '@/api/user'
-import { Plus, Delete, Expand, Fold, ChatDotRound, Promotion, CaretBottom, CaretTop, SwitchButton } from '@element-plus/icons-vue'
+import { Plus, Delete, Expand, Fold, Promotion, CaretBottom, CaretTop } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { marked } from 'marked'
 import hljs from 'highlight.js'
 import 'highlight.js/styles/github-dark.css'
+import avatarImg from '@/assets/images/avatars/avatar.jpg'
+import aiBasicAvatar from '@/assets/images/avatars/ai-basic.svg'
+import aiAgentAvatar from '@/assets/images/avatars/ai-agent.svg'
+import userDefaultAvatar from '@/assets/images/avatars/user-default.svg'
 
 const router = useRouter()
 const route = useRoute()
@@ -387,19 +395,34 @@ const chatStore = useChatStore()
 
 const sidebarCollapsed = ref(false)
 const inputText = ref('')
-const messageListRef = ref(null)
-const profileDialogVisible = ref(false)
-const profileSaving = ref(false)
-const profileForm = ref({
-  id: '',
-  userName: '',
-  userAccount: '',
-  userAvatar: ''
+const isInputEmpty = computed(() => inputText.value.trim().length === 0)
+const isTextareaFocused = ref(false)
+const isUserTyping = ref(false)
+const isComposing = ref(false)
+const shouldShowPlaceholder = computed(() => {
+  if (!isInputEmpty.value) return false
+  if (!isTextareaFocused.value) return true
+  if (isComposing.value) return false
+  return !isUserTyping.value
 })
+const messageListRef = ref(null)
+const textareaAutoSize = { minRows: 1, maxRows: 6 }
+const modeDropdownRef = ref(null)
+let typingResetTimer = null
 
 const formatUserId = (value) => {
   if (value === null || value === undefined) return ''
   return String(value)
+}
+
+const userAvatarForChat = computed(() => {
+  const avatar = userStore.userInfo?.userAvatar?.trim()
+  return avatar || userDefaultAvatar
+})
+
+const aiAvatarSources = {
+  basic: [avatarImg, aiBasicAvatar],
+  agent: [avatarImg, aiAgentAvatar]
 }
 
 const normalModeIcon = `data:image/svg+xml;utf8,${encodeURIComponent(`
@@ -445,10 +468,12 @@ const MODE_OPTIONS = [
 
 const isModeDropdownOpen = ref(false)
 const currentModeOption = computed(() => MODE_OPTIONS.find(option => option.value === chatStore.useDeepThinking) ?? MODE_OPTIONS[0])
-const alternateModes = computed(() => MODE_OPTIONS.filter(option => option.key !== currentModeOption.value.key))
-const displayUserId = computed(() => {
-  if (!userStore.userInfo) return ''
-  return formatUserId(userStore.userInfo.id)
+const dropdownModeOptions = computed(() => MODE_OPTIONS)
+
+const aiAvatarForChat = computed(() => {
+  const key = currentModeOption.value?.key || 'basic'
+  const [primary, fallback] = aiAvatarSources[key] || []
+  return primary || fallback || avatarImg
 })
 
 const toggleModeDropdown = () => {
@@ -456,9 +481,36 @@ const toggleModeDropdown = () => {
 }
 
 const handleSelectMode = (option) => {
+  if (option.key !== currentModeOption.value.key) {
   chatStore.useDeepThinking = option.value
+  }
   isModeDropdownOpen.value = false
 }
+
+const getModeDropdownElement = () => {
+  const refValue = modeDropdownRef.value
+  if (Array.isArray(refValue)) {
+    return refValue.find(Boolean) ?? null
+  }
+  return refValue
+}
+
+const handleClickOutsideModeDropdown = (event) => {
+  if (!isModeDropdownOpen.value) return
+  const dropdownEl = getModeDropdownElement()
+  if (!dropdownEl) return
+  if (dropdownEl.contains(event.target)) return
+  isModeDropdownOpen.value = false
+}
+
+onMounted(() => {
+  document.addEventListener('click', handleClickOutsideModeDropdown)
+})
+
+onBeforeUnmount(() => {
+  document.removeEventListener('click', handleClickOutsideModeDropdown)
+  clearTypingTimeout()
+})
 
 watch(
   () => chatStore.messages.length,
@@ -571,12 +623,77 @@ const handleDeleteConversation = async (conversationId) => {
   }
 }
 
-const toggleUserDetails = () => {
+const handleUserAreaClick = () => {
   if (!userStore.userInfo) {
     router.push('/login')
     return
   }
-  openProfileDialog()
+  router.push({ name: 'Profile' })
+}
+
+const clearTypingTimeout = () => {
+  if (typingResetTimer) {
+    clearTimeout(typingResetTimer)
+    typingResetTimer = null
+  }
+}
+
+const scheduleTypingReset = () => {
+  clearTypingTimeout()
+  if (!isTextareaFocused.value || isComposing.value) return
+  typingResetTimer = window.setTimeout(() => {
+    if (!isComposing.value) {
+      isUserTyping.value = false
+    }
+  }, 150)
+}
+
+const handleTextareaFocus = () => {
+  isTextareaFocused.value = true
+  isComposing.value = false
+  if (!isInputEmpty.value) {
+    isUserTyping.value = true
+  }
+}
+
+const handleTextareaBlur = () => {
+  isTextareaFocused.value = false
+  isUserTyping.value = false
+  isComposing.value = false
+  clearTypingTimeout()
+}
+
+const handleTextareaKeydown = () => {
+  isUserTyping.value = true
+  clearTypingTimeout()
+}
+
+const handleTextareaKeyup = () => {
+  if (!isTextareaFocused.value) return
+  if (isComposing.value) return
+  if (!isInputEmpty.value) return
+  scheduleTypingReset()
+}
+
+const handleCompositionStart = () => {
+  isComposing.value = true
+  isUserTyping.value = true
+  clearTypingTimeout()
+}
+
+const handleCompositionEnd = () => {
+  isComposing.value = false
+  nextTick(() => {
+    if (!isTextareaFocused.value) {
+      isUserTyping.value = false
+      return
+    }
+    if (isInputEmpty.value) {
+      scheduleTypingReset()
+    } else {
+      isUserTyping.value = true
+    }
+  })
 }
 
 const handleSendMessage = async () => {
@@ -1618,34 +1735,6 @@ const handleAuthAction = () => {
   }
 }
 
-const openProfileDialog = () => {
-  if (!userStore.userInfo) return
-  profileForm.value = {
-    id: displayUserId.value,
-    userName: userStore.userInfo.userName,
-    userAccount: userStore.userInfo.userAccount,
-    userAvatar: userStore.userInfo.userAvatar
-  }
-  profileDialogVisible.value = true
-}
-
-const handleSaveProfile = async () => {
-  if (!userStore.userInfo) return
-  profileSaving.value = true
-  try {
-    const payload = {
-      userName: profileForm.value.userName,
-      userAccount: profileForm.value.userAccount,
-      userAvatar: profileForm.value.userAvatar
-    }
-    const success = await userStore.updateProfile(payload)
-    if (success) {
-      profileDialogVisible.value = false
-    }
-  } finally {
-    profileSaving.value = false
-  }
-}
 </script>
 
 <style lang="scss" scoped>
@@ -2174,13 +2263,17 @@ const handleSaveProfile = async () => {
   width: 100%;
   display: flex;
   align-items: center;
-  gap: 14px;
-  border-radius: 42px;
+  gap: 16px;
+  border-radius: 48px;
   background: #f9f9fb;
   border: 1px solid #b5c0cf;
-  padding: 4px 16px;
+  padding: 3px 12px;
   box-shadow: 0 16px 36px rgba(15, 23, 42, 0.08);
   transition: background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+  --chat-line-height: 26px;
+  --chat-min-height: 48px;
+  --chat-horizontal-padding: 18px;
+  --chat-vertical-padding: calc((var(--chat-min-height) - var(--chat-line-height)) / 2);
 }
 
 .chat-input-shell--initial {
@@ -2211,7 +2304,8 @@ const handleSaveProfile = async () => {
   flex: 1;
   display: flex;
   align-items: center;
-  min-height: 44px;
+  min-height: var(--chat-min-height);
+  position: relative;
   
   :deep(.el-textarea__inner) {
     width: 100%;
@@ -2220,12 +2314,11 @@ const handleSaveProfile = async () => {
     border: none;
     box-shadow: none;
     resize: none;
-    height: 38px;
-    min-height: 38px;
-    line-height: 38px;
-    padding: 0;
-    padding-left: 14px;
-    font-size: 15px;
+    min-height: var(--chat-min-height);
+    height: auto;
+    line-height: var(--chat-line-height);
+    padding: var(--chat-vertical-padding) var(--chat-horizontal-padding);
+    font-size: 16px;
     color: #1f1f1f;
     
     &:focus {
@@ -2234,9 +2327,27 @@ const handleSaveProfile = async () => {
     }
     
     &::placeholder {
-      text-align: left;
+      color: transparent;
     }
   }
+}
+
+.chat-placeholder {
+  position: absolute;
+  left: calc(var(--chat-horizontal-padding) + 14px);
+  right: var(--chat-horizontal-padding);
+  top: var(--chat-vertical-padding);
+  bottom: var(--chat-vertical-padding);
+  display: flex;
+  align-items: center;
+  font-size: 16px;
+  line-height: var(--chat-line-height);
+  color: #9fa6b7;
+  pointer-events: none;
+  user-select: none;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .chat-send-btn {
@@ -2289,23 +2400,23 @@ const handleSaveProfile = async () => {
   display: inline-flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 8px;
+  gap: 5px;
   width: auto;
 }
 
 .mode-card {
   border-radius: 999px;
-  height: 40px;
-  padding: 0 4px;
+  height: 34px;
+  padding: 0 6px;
   border: 1px solid #d0d7de;
-  background: rgba(255, 255, 255, 0.95);
+  background: rgba(255, 255, 255, 0.96);
   display: flex;
   align-items: center;
   justify-content: flex-start;
-  gap: 6px;
+  gap: 4px;
   cursor: pointer;
   transition: all 0.25s ease;
-  box-shadow: 0 6px 16px rgba(15, 23, 42, 0.08);
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.08);
   appearance: none;
 }
 
@@ -2326,50 +2437,69 @@ const handleSaveProfile = async () => {
 }
 
 .mode-card.mode-card-option {
-  border: 1px dashed rgba(0, 0, 0, 0.08);
+  border: 1px dashed rgba(0, 0, 0, 0.12);
   background: #fff;
   box-shadow: none;
+  height: auto;
+  min-height: 44px;
+  padding: 6px 10px;
+  border-radius: 20px;
+}
+
+.mode-card.mode-card-option.is-active {
+  border: 1px solid rgba(0, 122, 255, 0.4);
+  background: rgba(0, 122, 255, 0.06);
+  box-shadow: inset 0 0 0 1px rgba(0, 122, 255, 0.1);
 }
 
 .mode-dropdown-panel {
   position: absolute;
-  bottom: calc(100% + 10px);
+  bottom: calc(100% + 8px);
   top: auto;
   left: 0;
   right: auto;
-  min-width: 240px;
-  border-radius: 16px;
+  min-width: 220px;
+  border-radius: 14px;
   border: 1px solid #e3e6ef;
   background: #fff;
-  padding: 8px;
-  box-shadow: 0 20px 40px rgba(20, 43, 77, 0.12);
+  padding: 6px;
+  box-shadow: 0 16px 32px rgba(20, 43, 77, 0.14);
   z-index: 20;
+}
+
+.mode-dropdown--down .mode-dropdown-panel {
+  top: calc(100% + 8px);
+  bottom: auto;
 }
 
 .mode-card-left {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
+}
+
+.mode-card-option .mode-card-left {
+  align-items: flex-start;
 }
 
 .mode-card-icon {
-  width: 28px;
-  height: 28px;
-  border-radius: 12px;
+  width: 20px;
+  height: 20px;
+  border-radius: 10px;
   flex-shrink: 0;
-  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.06);
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.06);
 }
 
 .mode-card-text {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 2px;
+  gap: 1px;
   color: #2d3648;
 }
 
 .mode-card-title {
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 600;
   display: flex;
   align-items: center;
@@ -2379,10 +2509,15 @@ const handleSaveProfile = async () => {
 .mode-card-desc {
   font-size: 11px;
   color: #6b7688;
+  display: none;
+}
+
+.mode-dropdown-panel .mode-card-desc {
+  display: block;
 }
 
 .mode-chip {
-  font-size: 11px;
+  font-size: 10px;
   color: #007aff;
   background: rgba(0, 122, 255, 0.12);
   padding: 2px 6px;
@@ -2390,9 +2525,14 @@ const handleSaveProfile = async () => {
   font-weight: 500;
 }
 
+.mode-card-option.is-active .mode-chip {
+  color: #fff;
+  background: #007aff;
+}
+
 .mode-card-arrow {
   color: #8092ad;
-  font-size: 16px;
+  font-size: 14px;
   margin-left: auto;
 }
 
@@ -2424,7 +2564,7 @@ const handleSaveProfile = async () => {
   }
   
   .expand-sidebar-btn {
-    display: none; // 移动端使用 mobile-header 中的按钮
+    display: none;
   }
   
   .sidebar {
@@ -2455,7 +2595,7 @@ const handleSaveProfile = async () => {
   }
   
   .chat-input-shell {
-    padding: 12px 80px 52px 14px;
+    padding: 16px 96px 64px 20px;
   }
 }
 </style>

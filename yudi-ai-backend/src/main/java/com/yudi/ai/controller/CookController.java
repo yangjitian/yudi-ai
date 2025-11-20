@@ -46,6 +46,7 @@ import java.util.function.Function;
  * - 基于不同知识库（云知识库、本地PostgreSQL向量数据库）的检索增强生成（RAG）功能
  * - 结构化的菜谱报告生成功能
  */
+@Deprecated
 @Slf4j
 @RestController
 @RequestMapping("/cook")
