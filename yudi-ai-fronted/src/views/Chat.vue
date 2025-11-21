@@ -1055,6 +1055,10 @@ const getRenderedMarkdown = (message, isStreaming) => {
       // 预处理内容，优化格式识别
       let processedContent = preprocessContent(content)
       
+      // 在流式输出时，对不完整的markdown进行额外修复
+      // 确保粗体、列表等格式即使在不完整时也能被识别
+      processedContent = fixIncompleteMarkdownForStreaming(processedContent)
+      
       // 使用自定义的流式渲染配置
       const rendered = marked.parse(processedContent, {
         breaks: true,
@@ -1193,12 +1197,20 @@ function preprocessContent(content) {
   processed = processed.replace(/^(\s*[-*+])\s*\[\s*\]\s*/gm, '$1 [ ] ')
   processed = processed.replace(/^(\s*[-*+])\s*\[[xX]\]\s*/gm, '$1 [x] ')
   
-  // 先处理带空格的粗体格式（星号）：将 ** 文本 ** 转换为 **文本**
-  // 必须先处理粗体，避免被斜体处理误匹配
-  processed = processed.replace(/\*\*\s+([^*\n]+?)\s+\*\*/g, '**$1**')
+  // 改进的粗体格式处理 - 支持emoji和特殊字符
+  // 处理 ** 文本 ** 格式（包括emoji）：** 🥣 主要材料** 或 **文本** 或 ** 文本 **
+  // 使用更宽松的匹配，允许格式符号和内容之间有空格
+  processed = processed.replace(/\*\*\s*([^*\n]+?)\s*\*\*/g, (match, text) => {
+    // 移除文本两端的空格，但保留内部空格
+    const trimmedText = text.trim()
+    return `**${trimmedText}**`
+  })
   
-  // 处理带空格的粗体格式（下划线）：将 __ 文本 __ 转换为 __文本__
-  processed = processed.replace(/__\s+([^_\n]+?)\s+__/g, '__$1__')
+  // 处理 __ 文本 __ 格式（下划线粗体）
+  processed = processed.replace(/__\s*([^_\n]+?)\s*__/g, (match, text) => {
+    const trimmedText = text.trim()
+    return `__${trimmedText}__`
+  })
   
   // 再处理带空格的星号格式：将 * 文本 * 转换为 *文本*（斜体）
   // 此时已经处理过粗体，所以单个星号就是斜体
@@ -1243,9 +1255,6 @@ function preprocessContent(content) {
   processed = processed.replace(/\$\$\s+([^$]+?)\s+\$\$/g, (match, formula) => {
     return '$$' + formula + '$$'
   })
-  
-  // 优化emoji和特殊字符的处理（但不要破坏已修复的格式）
-  processed = optimizeEmojiAndSpecialChars(processed)
   
   // 修复不完整的代码块标记
   processed = fixIncompleteCodeBlocks(processed)
@@ -1348,20 +1357,51 @@ function fixTableFormat(content) {
   return resultLines.join('\n')
 }
 
-// 优化emoji和特殊字符处理
+// 优化emoji和特殊字符处理（已移除，避免破坏markdown格式）
+// emoji和markdown格式符号的交互由preprocessContent中的粗体处理统一管理
 function optimizeEmojiAndSpecialChars(content) {
-  // 确保emoji和文本之间有空格
-  let optimized = content
+  // 不再自动添加空格，避免破坏markdown格式
+  // markdown格式符号和emoji之间的空格由粗体处理函数统一处理
+  return content
+}
+
+// 流式输出时修复不完整的markdown格式
+function fixIncompleteMarkdownForStreaming(content) {
+  let fixed = content
   
-  // 在emoji和非空格字符之间添加空格
-  optimized = optimized.replace(/([\u{1F300}-\u{1F6FF}\u{1F900}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}])([^\s])/gu, '$1 $2')
-  optimized = optimized.replace(/([^\s])([\u{1F300}-\u{1F6FF}\u{1F900}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}])/gu, '$1 $2')
+  // 修复不完整的粗体格式：** 文本（没有闭合的 **）
+  // 在行尾或文本末尾，如果只有一个 **，尝试修复
+  const lines = fixed.split('\n')
+  const fixedLines = lines.map((line, index) => {
+    let fixedLine = line
+    
+    // 检查是否有未闭合的粗体标记
+    const boldMatches = fixedLine.match(/\*\*/g)
+    if (boldMatches && boldMatches.length % 2 !== 0) {
+      // 有奇数个 **，说明有未闭合的
+      // 如果行尾有 **，可能是未闭合的开始标记
+      if (fixedLine.trim().endsWith('**')) {
+        // 检查是否是开始标记（后面有内容）
+        const lastBoldIndex = fixedLine.lastIndexOf('**')
+        const afterBold = fixedLine.substring(lastBoldIndex + 2).trim()
+        if (afterBold.length > 0) {
+          // 有内容，可能是未闭合的开始标记，暂时不修复（等待更多内容）
+          return fixedLine
+        }
+      }
+      // 如果行尾没有 **，可能是未闭合的开始标记，暂时不修复
+    }
+    
+    // 修复不完整的列表项：如果行尾有列表标记但没有内容，确保格式正确
+    if (/^(\s*)([-*+]|\d+\.)\s*$/.test(fixedLine)) {
+      // 空列表项，确保格式正确
+      fixedLine = fixedLine.replace(/^(\s*)([-*+]|\d+\.)\s*$/, '$1$2 ')
+    }
+    
+    return fixedLine
+  })
   
-  // 确保标题标记（#）后有空格，但不要破坏已修复的星号格式
-  // 只处理 # 开头的标题，不处理 * 和 +（列表标记）
-  optimized = optimized.replace(/(^|\n)(#{1,6})([^\s#])/gm, '$1$2 $3')
-  
-  return optimized
+  return fixedLines.join('\n')
 }
 
 // 修复不完整的代码块标记
@@ -1489,16 +1529,23 @@ function enhancedTextToHtml(text) {
     html = html.replace(/\r\n/g, '<br>').replace(/\n/g, '<br>').replace(/\r/g, '<br>')
     
     // 保留基本格式标记
-    // 处理粗体标记
-    html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-    html = html.replace(/__(.+?)__/g, '<strong>$1</strong>')
+    // 处理粗体标记 - 改进：支持emoji和空格
+    // 先处理 ** 文本 ** 格式（包括emoji）
+    html = html.replace(/\*\*\s*([^*\n]+?)\s*\*\*/g, '<strong>$1</strong>')
+    html = html.replace(/__\s*([^_\n]+?)\s*__/g, '<strong>$1</strong>')
     
-    // 处理斜体标记
-    html = html.replace(/\*(.+?)\*/g, '<em>$1</em>')
-    html = html.replace(/_(.+?)_/g, '<em>$1</em>')
+    // 处理斜体标记 - 但要避免匹配列表标记
+    // 只处理非行首的斜体，或行首但不是列表标记的斜体
+    html = html.replace(/([^\n\*])\*\s*([^*\n]+?)\s*\*/g, '$1<em>$2</em>')
+    html = html.replace(/^(\s+)\*\s*([^*\n]+?)\s*\*/gm, '$1<em>$2</em>')
+    html = html.replace(/([^\n_])_\s*([^_\n]+?)\s*_/g, '$1<em>$2</em>')
+    html = html.replace(/^(\s+)_\s*([^_\n]+?)\s*_/gm, '$1<em>$2</em>')
     
     // 处理行内代码
-    html = html.replace(/`(.+?)`/g, '<code style="background-color: #f1f2f4; padding: 0.2em 0.4em; border-radius: 3px;">$1</code>')
+    html = html.replace(/`([^`\n]+?)`/g, '<code style="background-color: #f1f2f4; padding: 0.2em 0.4em; border-radius: 3px;">$1</code>')
+    
+    // 处理列表项
+    html = html.replace(/^(\s*)([-*+]|\d+\.)\s+(.+)$/gm, '<li>$3</li>')
     
     return html
   } catch (e) {
@@ -1584,8 +1631,8 @@ const applyMarkdownStyleFixes = () => {
     // 修复段落样式
     const paragraphs = messageListRef.value.querySelectorAll('p')
     paragraphs.forEach(p => {
-      p.style.marginTop = '1em'
-      p.style.marginBottom = '1em'
+      p.style.marginTop = '1.2em'
+      p.style.marginBottom = '1.2em'
       p.style.textAlign = 'left'
     })
     
@@ -1855,7 +1902,7 @@ const handleAuthAction = () => {
       
       .conversation-title {
         display: block;
-        font-size: 14px;
+        font-size: 15px;
         color: #333;
         overflow: hidden;
         text-overflow: ellipsis;
@@ -1910,7 +1957,7 @@ const handleAuthAction = () => {
   min-width: 0;
   
   .user-name {
-    font-size: 14px;
+    font-size: 15px;
     font-weight: 600;
     color: #2d3648;
     overflow: hidden;
@@ -2000,10 +2047,10 @@ const handleAuthAction = () => {
 .message-list {
   flex: 1;
   overflow-y: auto;
-  padding: 24px 56px 140px;
+  padding: 20px 56px 140px;
   display: flex;
   flex-direction: column;
-  gap: 24px;
+  gap: 16px;
   
   &.has-messages {
     justify-content: flex-start;
@@ -2021,7 +2068,7 @@ const handleAuthAction = () => {
 
 .message-item {
   display: flex;
-  gap: 12px;
+  gap: 10px;
   align-items: flex-start;
   width: 100%;
   
@@ -2052,27 +2099,74 @@ const handleAuthAction = () => {
   
   .message-content {
     max-width: 78%;
-    padding: 12px 16px;
+    padding: 10px 14px;
     word-wrap: break-word;
+    font-size: 15px;
     
     .text-content {
       white-space: pre-wrap;
+      line-height: 1.5;
     }
     
-    // 流式传输时的纯文本样式（保留换行，类似 ChatGPT）
+    // 流式传输时的markdown样式（实时渲染markdown格式）
     .streaming-text-content {
-      white-space: pre-wrap;
-      line-height: 1.6;
+      line-height: 1.5;
       word-wrap: break-word;
+      
+      // 流式输出时也应用markdown样式，确保格式正确显示
+      :deep(p) {
+        margin: 0 0 10px 0;
+        line-height: 1.5;
+        
+        &:last-child {
+          margin-bottom: 0;
+        }
+      }
+      
+      :deep(strong) {
+        font-weight: 600;
+      }
+      
+      :deep(em) {
+        font-style: italic;
+      }
+      
+      :deep(code) {
+        background: rgba(0, 0, 0, 0.1);
+        padding: 2px 5px;
+        border-radius: 3px;
+        font-family: 'Courier New', 'Consolas', 'Monaco', monospace;
+        font-size: 0.9em;
+      }
+      
+      :deep(ul), :deep(ol) {
+        margin: 6px 0;
+        padding-left: 20px;
+      }
+      
+      :deep(li) {
+        margin: 2px 0;
+        line-height: 1.5;
+      }
+      
+      :deep(h1), :deep(h2), :deep(h3), :deep(h4), :deep(h5), :deep(h6) {
+        margin: 12px 0 6px 0;
+        font-weight: 600;
+        line-height: 1.3;
+        
+        &:first-child {
+          margin-top: 0;
+        }
+      }
     }
     
     .markdown-content {
-      line-height: 1.6;
+      line-height: 1.5;
       word-wrap: break-word;
       
       :deep(p) {
-        margin: 0 0 12px 0;
-        line-height: 1.6;
+        margin: 0 0 10px 0;
+        line-height: 1.5;
         
         &:last-child {
           margin-bottom: 0;
@@ -2080,9 +2174,9 @@ const handleAuthAction = () => {
       }
       
       :deep(h1), :deep(h2), :deep(h3), :deep(h4), :deep(h5), :deep(h6) {
-        margin: 16px 0 8px 0;
+        margin: 12px 0 6px 0;
         font-weight: 600;
-        line-height: 1.4;
+        line-height: 1.3;
         
         &:first-child {
           margin-top: 0;
@@ -2090,35 +2184,36 @@ const handleAuthAction = () => {
       }
       
       :deep(h1) {
-        font-size: 1.5em;
+        font-size: 1.4em;
         border-bottom: 1px solid rgba(0, 0, 0, 0.1);
-        padding-bottom: 8px;
+        padding-bottom: 6px;
+        margin-bottom: 8px;
       }
       
       :deep(h2) {
-        font-size: 1.3em;
+        font-size: 1.2em;
       }
       
       :deep(h3) {
-        font-size: 1.1em;
+        font-size: 1.05em;
       }
       
       :deep(ul), :deep(ol) {
-        margin: 8px 0;
-        padding-left: 24px;
+        margin: 6px 0;
+        padding-left: 20px;
       }
       
       :deep(li) {
-        margin: 4px 0;
-        line-height: 1.6;
+        margin: 2px 0;
+        line-height: 1.5;
       }
       
       :deep(blockquote) {
-        margin: 8px 0;
-        padding: 8px 16px;
-        border-left: 4px solid rgba(0, 0, 0, 0.2);
+        margin: 6px 0;
+        padding: 6px 12px;
+        border-left: 3px solid rgba(0, 0, 0, 0.2);
         background: rgba(0, 0, 0, 0.05);
-        border-radius: 4px;
+        border-radius: 3px;
       }
       
       :deep(a) {
@@ -2140,18 +2235,18 @@ const handleAuthAction = () => {
       
       :deep(code) {
         background: rgba(0, 0, 0, 0.1);
-        padding: 2px 6px;
-        border-radius: 4px;
+        padding: 2px 5px;
+        border-radius: 3px;
         font-family: 'Courier New', 'Consolas', 'Monaco', monospace;
         font-size: 0.9em;
       }
       
       :deep(pre) {
         background: #1e1e1e;
-        padding: 16px;
-        border-radius: 8px;
+        padding: 12px;
+        border-radius: 6px;
         overflow-x: auto;
-        margin: 12px 0;
+        margin: 8px 0;
         position: relative;
         
         code {
@@ -2159,18 +2254,18 @@ const handleAuthAction = () => {
           padding: 0;
           color: #d4d4d4;
           font-size: 0.9em;
-          line-height: 1.5;
+          line-height: 1.4;
         }
       }
       
       :deep(table) {
         border-collapse: collapse;
         width: 100%;
-        margin: 12px 0;
+        margin: 8px 0;
         
         th, td {
           border: 1px solid rgba(0, 0, 0, 0.1);
-          padding: 8px 12px;
+          padding: 6px 10px;
           text-align: left;
         }
         
@@ -2183,14 +2278,14 @@ const handleAuthAction = () => {
       :deep(hr) {
         border: none;
         border-top: 1px solid rgba(0, 0, 0, 0.1);
-        margin: 16px 0;
+        margin: 10px 0;
       }
       
       :deep(img) {
         max-width: 100%;
         height: auto;
         border-radius: 4px;
-        margin: 8px 0;
+        margin: 6px 0;
       }
     }
   }
@@ -2318,7 +2413,7 @@ const handleAuthAction = () => {
     height: auto;
     line-height: var(--chat-line-height);
     padding: var(--chat-vertical-padding) var(--chat-horizontal-padding);
-    font-size: 16px;
+    font-size: 15px;
     color: #1f1f1f;
     
     &:focus {
@@ -2340,7 +2435,7 @@ const handleAuthAction = () => {
   bottom: var(--chat-vertical-padding);
   display: flex;
   align-items: center;
-  font-size: 16px;
+  font-size: 15px;
   line-height: var(--chat-line-height);
   color: #9fa6b7;
   pointer-events: none;
@@ -2532,7 +2627,7 @@ const handleAuthAction = () => {
 
 .mode-card-arrow {
   color: #8092ad;
-  font-size: 14px;
+  font-size: 15px;
   margin-left: auto;
 }
 

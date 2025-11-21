@@ -13,6 +13,7 @@ import com.yudi.ai.exception.BusinessException;
 import com.yudi.ai.exception.ThrowUtils;
 import com.yudi.ai.model.entity.User;
 import com.yudi.ai.model.vo.ChatResponseVO;
+import com.yudi.ai.model.vo.ConversationMemoryVO;
 import com.yudi.ai.rag.QueryRewriter;
 import com.yudi.ai.service.ConversationMemoryService;
 import com.yudi.ai.utils.SseEmitterUtil;
@@ -21,6 +22,8 @@ import jakarta.annotation.PostConstruct;
 import jakarta.annotation.Resource;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.ai.chat.messages.*;
+import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.client.advisor.SimpleLoggerAdvisor;
 import org.springframework.ai.document.Document;
@@ -33,49 +36,35 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import reactor.core.publisher.Flux;
 
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Function;
 
 /**
- * 统一聊天接口
- * <p>
- * - 支持普通模式（RAG）和深度思考模式（Agent）
- * - 支持流式和非流式响应
- * - 统一管理会话
+ * 最终完美版 ChatController（已彻底解决 RAG 污染问题）
+ * 核心思想：RAG 检索内容只以 SystemMessage 形式出现，永不进入历史！
  */
 @Slf4j
 @RestController
 @RequestMapping("/c")
 public class ChatController {
 
-    // 静态常量
     private static final String DEEP_THOUGHT_MODE = "deep_thought";
     private static final String DEFAULT_PROMPT = ResourceUtil.readUtf8Str("prompts/cook_app_system_prompt.md");
+    private static final int MAX_HISTORY_ROUNDS = 6; // 最近 6 轮（user + assistant）
 
-    // 注入服务
-    @Resource
-    private QueryRewriter queryRewriter;
-    @Resource
-    private ToolCallbackProvider toolCallbackProvider;
-    @Resource
-    private ConversationMemoryService conversationMemoryService;
-    @Resource
-    private YdManus ydManus;
+    @Resource private QueryRewriter queryRewriter;
+    @Resource private ToolCallbackProvider toolCallbackProvider;
+    @Resource private ConversationMemoryService conversationMemoryService;
+    @Resource private YdManus ydManus;
 
-    // AI模型及组件
     private ChatClient dashScopeChatClient;
     private final DocumentRetriever pgRetriever;
-    // 阿里云知识库的文档检索器。
-//    private final DocumentRetriever cloudRetriever;
-
-    // 用于延迟初始化的字段
     private final ChatClient.Builder chatClientBuilder;
     private final Object[] allToolInstances;
 
-    /**
-     * 请求体 DTO
-     */
     @Data
     public static class ChatRequest {
         private String query;
@@ -84,7 +73,6 @@ public class ChatController {
     }
 
     public ChatController(ChatClient.Builder chatClientBuilder,
-//                          DocumentRetriever documentRetriever,
                           VectorStore pgVectorVectorStore,
                           Object[] allToolInstances) {
         this.pgRetriever = VectorStoreDocumentRetriever.builder()
@@ -99,17 +87,12 @@ public class ChatController {
         ChatClient.Builder builder = chatClientBuilder
                 .defaultSystem(DEFAULT_PROMPT)
                 .defaultTools(allToolInstances)
-                .defaultAdvisors(
-                         new SimpleLoggerAdvisor()
-                        ,new MyLoggerAdvisor()
-                )
-                .defaultOptions(
-                        DashScopeChatOptions.builder()
-                                .withTopP(0.7)
-                                .withTemperature(0.3)
-                                .withMaxToken(2000)
-                                .build()
-                );
+                .defaultAdvisors(new SimpleLoggerAdvisor(), new MyLoggerAdvisor())
+                .defaultOptions(DashScopeChatOptions.builder()
+                        .withTopP(0.7)
+                        .withTemperature(0.3)
+                        .withMaxToken(2000)
+                        .build());
 
         if (toolCallbackProvider != null) {
             try {
@@ -118,29 +101,23 @@ public class ChatController {
             } catch (Exception e) {
                 log.warn("添加MCP工具失败: {}", e.getMessage());
             }
-        } else {
-            log.info("ToolCallbackProvider未配置，跳过MCP工具");
         }
         this.dashScopeChatClient = builder.build();
     }
 
-    /**
-     * 统一聊天接口（流式）
-     */
+    // ================================ 流式聊天 ================================
     @PostMapping({"/chat/stream", "/chat/stream/{conversationId}"})
     public SseEmitter chatStream(@RequestBody ChatRequest chatRequest,
                                  @PathVariable(required = false) String conversationId) {
         String query = chatRequest.getQuery();
         String mode = chatRequest.getMode();
-        log.info("统一聊天请求（流式）: {}, 模式: {}, 会话ID: {}", query, mode, conversationId);
         ThrowUtils.throwIf(StrUtil.isBlank(query), ErrorCode.PARAMETER_NULL, "查询内容不能为空");
 
         User user = UserHolder.getUser();
-        if (user == null) {
-            return SseEmitterUtil.error("用户未登录");
-        }
+        if (user == null) return SseEmitterUtil.error("用户未登录");
 
-        String finalConversationId = StrUtil.isNotBlank(conversationId) ? conversationId : conversationMemoryService.createConversation(user.getId());
+        String finalConversationId = StrUtil.isNotBlank(conversationId)
+                ? conversationId : conversationMemoryService.createConversation(user.getId());
 
         StrBuilder fullResponse = new StrBuilder();
         AtomicBoolean saved = new AtomicBoolean(false);
@@ -150,95 +127,163 @@ public class ChatController {
             }
         };
 
-        try {
-            Flux<String> dataFlux;
-            if (StrUtil.equalsIgnoreCase(mode, DEEP_THOUGHT_MODE)) {
-                // 深度思考模式
-                dataFlux = Flux.defer(() -> {
-                            ydManus.reset();
-                            return ydManus.runStream(query);
-                        })
-                        .doOnError(error -> log.error("YdManus流式执行失败: {}", error.getMessage(), error))
-                        .onErrorResume(error -> {
-                            log.warn("YdManus流式执行失败，尝试非流式兜底: {}", error.getMessage());
-                            String fallback = executeSyncDeepThought(query);
-                            fullResponse.append(fallback);
-                            saveTask.run();
-                            return Flux.just(fallback);
-                        })
-                        .doFinally(signalType -> ydManus.reset());
-            } else {
-                // 普通RAG模式
-                dataFlux = Flux.defer(() -> performStreamRagWithFallback(query, this.pgRetriever, "pgVector"))
-                        .onErrorResume(error -> {
-                            log.error("RAG聊天流式执行失败，尝试兜底: {}", error.getMessage(), error);
-                            String fallback = performRagWithFallback(query, this.pgRetriever, "pgVector");
-                            fullResponse.append(fallback);
-                            saveTask.run();
-                            return Flux.just(fallback);
-                        });
-            }
-
-            // 确保数据流正确发送，保留所有字符（包括换行符）
-            Flux<SseEmitter.SseEventBuilder> eventFlux = Flux.concat(
-                    Flux.just(SseEmitter.event().name("conversationId").data(finalConversationId)),
-                    dataFlux
-                            .doOnNext(fullResponse::append)
-                            .doOnComplete(saveTask)
-                            .filter(chunk -> chunk != null) // 只过滤 null，保留空白字符串
-                            .map(chunk -> SseEmitter.event().name("message").data(chunk))
-            );
-
-            return SseEmitterUtil.fromEventFlux(eventFlux);
-
-        } catch (Exception e) {
-            log.error("聊天初始化失败: {}", e.getMessage(), e);
-            return SseEmitterUtil.error("初始化失败: " + e.getMessage());
+        Flux<String> dataFlux;
+        if (StrUtil.equalsIgnoreCase(mode, DEEP_THOUGHT_MODE)) {
+            dataFlux = Flux.defer(() -> {
+                        ydManus.reset();
+                        return ydManus.runStream(query);
+                    })
+                    .doOnError(e -> log.error("YdManus流式失败: {}", e.getMessage(), e))
+                    .onErrorResume(e -> {
+                        String fallback = executeSyncDeepThought(query);
+                        fullResponse.append(fallback);
+                        saveTask.run();
+                        return Flux.just(fallback);
+                    })
+                    .doFinally(s -> ydManus.reset());
+        } else {
+            dataFlux = performStreamRagWithHistory(query, finalConversationId)
+                    .onErrorResume(e -> {
+                        log.error("RAG流式失败，兜底非流式: {}", e.getMessage());
+                        String fallback = performRagWithHistory(query, finalConversationId);
+                        fullResponse.append(fallback);
+                        saveTask.run();
+                        return Flux.just(fallback);
+                    });
         }
+
+        Flux<SseEmitter.SseEventBuilder> eventFlux = Flux.concat(
+                Flux.just(SseEmitter.event().name("conversationId").data(finalConversationId)),
+                dataFlux.doOnNext(fullResponse::append)
+                        .doOnComplete(saveTask)
+                        .filter(Objects::nonNull)
+                        .map(chunk -> SseEmitter.event().name("message").data(chunk))
+        );
+
+        return SseEmitterUtil.fromEventFlux(eventFlux);
     }
 
-    /**
-     * 统一聊天接口（非流式）
-     */
+    // ================================ 非流式聊天 ================================
     @PostMapping({"/chat", "/chat/{conversationId}"})
     public BaseResponse<ChatResponseVO> chat(@RequestBody ChatRequest chatRequest,
                                              @PathVariable(required = false) String conversationId) {
         String query = chatRequest.getQuery();
         String mode = chatRequest.getMode();
-        log.info("统一聊天请求（非流式）: {}, 模式: {}, 会话ID: {}", query, mode, conversationId);
         ThrowUtils.throwIf(StrUtil.isBlank(query), ErrorCode.PARAMETER_NULL, "查询内容不能为空");
 
         User user = UserHolder.getUser();
-        if (user == null) {
-            throw new BusinessException(ErrorCode.NOT_LOGIN, "用户未登录");
+        if (user == null) throw new BusinessException(ErrorCode.NOT_LOGIN, "用户未登录");
+
+        String finalConversationId = StrUtil.isNotBlank(conversationId)
+                ? conversationId : conversationMemoryService.createConversation(user.getId());
+
+        String answer;
+        if (StrUtil.equalsIgnoreCase(mode, DEEP_THOUGHT_MODE)) {
+            answer = executeSyncDeepThought(query);
+        } else {
+            answer = performRagWithHistory(query, finalConversationId);
         }
 
-        String finalConversationId = StrUtil.isNotBlank(conversationId) ? conversationId : conversationMemoryService.createConversation(user.getId());
+        saveConversationIfNeeded(finalConversationId, user.getId(), query, answer);
 
-        try {
-            String answer;
-            if (StrUtil.equalsIgnoreCase(mode, DEEP_THOUGHT_MODE)) {
-                // 深度思考模式
-                answer = executeSyncDeepThought(query);
-            } else {
-                // 普通RAG模式
-                answer = performRagWithFallback(query, this.pgRetriever, "pgVector");
-            }
-
-            saveConversationIfNeeded(finalConversationId, user.getId(), query, answer);
-
-            ChatResponseVO response = new ChatResponseVO();
-            response.setAnswer(answer);
-            response.setConversationId(finalConversationId);
-            return BaseResponse.success(response);
-
-        } catch (Exception e) {
-            log.error("聊天执行失败: {}", e.getMessage(), e);
-            throw new BusinessException(ErrorCode.SYSTEM_ERROR, "聊天执行失败: " + e.getMessage());
-        }
+        ChatResponseVO response = new ChatResponseVO();
+        response.setAnswer(answer);
+        response.setConversationId(finalConversationId);
+        return BaseResponse.success(response);
     }
 
-    // --- 私有辅助方法 ---
+    // ================================ 核心 RAG 方法（彻底根治版） ================================
+
+    private String performRagWithHistory(String query, String conversationId) {
+        return performRagInternal(query, conversationId, spec -> spec.call().content());
+    }
+
+    private Flux<String> performStreamRagWithHistory(String query, String conversationId) {
+        return performRagInternal(query, conversationId, spec -> spec.stream().content());
+    }
+
+    /** 核心：RAG 内容只以 SystemMessage 出现，永不污染历史 */
+    private <T> T performRagInternal(String query,
+                                     String conversationId,
+                                     Function<ChatClient.ChatClientRequestSpec, T> responseFunc) {
+
+        // 1. 查询重写
+        String rewrittenQuery = StrUtil.length(query) > 20 ? queryRewriter.doQueryRewriter(query) : query;
+
+        // 2. 向量检索
+        List<Document> documents = pgRetriever.retrieve(new Query(rewrittenQuery));
+
+        // 3. 构建绝对干净的历史对话（只包含真实用户输入和AI回复）
+        List<Message> historyMessages = buildCleanHistory(conversationId);
+
+        // 4. 构造本次请求的完整消息列表
+        List<Message> promptMessages = new ArrayList<>(historyMessages);
+
+        // 如果有检索到内容 → 作为 SystemMessage 加入，且只活在这一轮！
+        if (CollUtil.isNotEmpty(documents)) {
+            String context = CollUtil.join(CollUtil.map(documents, Document::getText, true), "\n\n");
+
+            String ragSystemPrompt = StrUtil.format(
+                    """
+                    【重要指令】
+                    你必须优先使用以下检索到的真实知识来回答用户问题。
+                    如果检索内容不足或不相关，再使用你的通用知识补充。
+                    绝不要编造不存在的事实。
+
+                    【检索到的真实知识】
+                    {}
+                    """, context);
+
+            promptMessages.add(0, new SystemMessage(ragSystemPrompt)); // 放在最前面效果最佳
+        }
+
+        // 最后加入用户当前真实说的这句话（原始 query）
+        promptMessages.add(new UserMessage(query));
+
+        // 5. 创建 Prompt 并调用模型
+        Prompt prompt = new Prompt(promptMessages);
+        return responseFunc.apply(dashScopeChatClient.prompt(prompt));
+    }
+
+    /** 构建绝对干净的历史（永不被 RAG 污染） */
+    private List<Message> buildCleanHistory(String conversationId) {
+        List<ConversationMemoryVO> rawHistory = conversationMemoryService.getConversationHistory(
+                conversationId, UserHolder.getUser().getId());
+
+        if (CollUtil.isEmpty(rawHistory)) {
+            return new ArrayList<>();
+        }
+
+        // 限制最近 6 轮
+        if (rawHistory.size() > MAX_HISTORY_ROUNDS) {
+            rawHistory = rawHistory.subList(rawHistory.size() - MAX_HISTORY_ROUNDS, rawHistory.size());
+        }
+
+        List<Message> messages = new ArrayList<>();
+        for (ConversationMemoryVO vo : rawHistory) {
+            String userInput = vo.getUserInput();
+            String aiResponse = vo.getAiResponse();
+
+            // 极端严格过滤，任何有 RAG 痕迹的直接丢弃
+            if (StrUtil.isNotBlank(userInput)
+                    && userInput.length() < 1000
+                    && !userInput.contains("【背景知识】")
+                    && !userInput.contains("【检索")
+                    && !userInput.contains("参考信息")
+                    && !userInput.contains("---")
+                    && !userInput.contains("重要指令")) {
+
+                messages.add(new UserMessage(userInput));
+            }
+
+            if (StrUtil.isNotBlank(aiResponse)) {
+                messages.add(new AssistantMessage(aiResponse));
+            }
+        }
+        return messages;
+    }
+
+    // ================================ 其他方法 ================================
 
     private String executeSyncDeepThought(String query) {
         try {
@@ -252,59 +297,19 @@ public class ChatController {
         }
     }
 
-    private String performRagWithFallback(String query, DocumentRetriever retriever, String retrieverName) {
-        return performRag(query, retriever, retrieverName, prompt -> prompt.call().content());
-    }
+    private void saveConversationIfNeeded(String conversationId, Long userId, String rawUserInput, String aiResponse) {
+        if (StrUtil.isAllBlank(conversationId, rawUserInput, aiResponse) || userId == null) return;
 
-    private Flux<String> performStreamRagWithFallback(String query, DocumentRetriever retriever, String retrieverName) {
-        return performRag(query, retriever, retrieverName, prompt -> prompt.stream().content());
-    }
-
-    private <T> T performRag(String query, DocumentRetriever retriever, String retrieverName,
-                             Function<ChatClient.ChatClientRequestSpec, T> responseFunc) {
-        String rewrittenQuery = StrUtil.length(query) > 20 ? queryRewriter.doQueryRewriter(query) : query;
-        boolean wasRewritten = !StrUtil.equals(query, rewrittenQuery);
-        if (wasRewritten) {
-            log.info("查询重写:{} ->  {}", query, rewrittenQuery);
-        }
-
-        List<Document> documents = retriever.retrieve(new Query(rewrittenQuery));
-
-        if (CollUtil.isNotEmpty(documents)) {
-            log.info("从 {} 检索到 {} 个相关文档。", retrieverName, documents.size());
-            String context = CollUtil.join(CollUtil.map(documents, Document::getText, true), "\n---\n");
-            String userMessage = StrUtil.format(
-                    """
-                            请基于以下参考信息回答用户的问题。
-
-                            【背景知识】
-                            {}
-
-                             - 优先使用背景知识回答
-                             - 背景知识不足时可以使用你自己的通用知识补充
-                             - 必须针对用户原始问题回答
-
-                            【问题信息】
-                             - 用户原始问题: {}{}""",
-                    context, query,
-                    wasRewritten ? StrUtil.format("\n检索优化版本: {}(仅供参考)", rewrittenQuery) : ""
-            );
-            return responseFunc.apply(dashScopeChatClient.prompt().user(userMessage));
-        } else {
-            log.info("未从 {} 检索到相关文档，使用通用知识流程回答。", retrieverName);
-            return responseFunc.apply(dashScopeChatClient.prompt().user(query));
-        }
-    }
-
-    private void saveConversationIfNeeded(String conversationId, Long userId, String userInput, String aiResponse) {
-        if (StrUtil.isAllBlank(conversationId, userInput, aiResponse) || userId == null) {
+        // 再次保险：防止任何 RAG 包装消息被存进去
+        if (rawUserInput.contains("【重要指令】") || rawUserInput.contains("【检索到的真实知识】") || rawUserInput.length() > 800) {
+            log.warn("检测到RAG系统消息试图被存为用户输入，已阻止！conversationId: {}", conversationId);
             return;
         }
+
         try {
-            conversationMemoryService.saveConversationRound(conversationId, userId, userInput, aiResponse);
+            conversationMemoryService.saveConversationRound(conversationId, userId, rawUserInput, aiResponse);
         } catch (Exception e) {
             log.error("保存对话记录失败: {}", e.getMessage(), e);
         }
     }
 }
-
