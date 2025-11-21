@@ -91,7 +91,7 @@ public class ChatController {
                 .defaultOptions(DashScopeChatOptions.builder()
                         .withTopP(0.7)
                         .withTemperature(0.3)
-                        .withMaxToken(2000)
+                        .withMaxToken(1666)
                         .build());
 
         if (toolCallbackProvider != null) {
@@ -105,7 +105,6 @@ public class ChatController {
         this.dashScopeChatClient = builder.build();
     }
 
-    // ================================ 流式聊天 ================================
     @PostMapping({"/chat/stream", "/chat/stream/{conversationId}"})
     public SseEmitter chatStream(@RequestBody ChatRequest chatRequest,
                                  @PathVariable(required = false) String conversationId) {
@@ -160,10 +159,9 @@ public class ChatController {
                         .map(chunk -> SseEmitter.event().name("message").data(chunk))
         );
 
-        return SseEmitterUtil.fromEventFlux(eventFlux);
+        return SseEmitterUtil.fromEventFlux(finalConversationId, eventFlux, saveTask);
     }
 
-    // ================================ 非流式聊天 ================================
     @PostMapping({"/chat", "/chat/{conversationId}"})
     public BaseResponse<ChatResponseVO> chat(@RequestBody ChatRequest chatRequest,
                                              @PathVariable(required = false) String conversationId) {
@@ -192,7 +190,18 @@ public class ChatController {
         return BaseResponse.success(response);
     }
 
-    // ================================ 核心 RAG 方法（彻底根治版） ================================
+    @PostMapping("/chat/stream/{conversationId}/pause")
+    public BaseResponse<Boolean> pauseChatStream(@PathVariable String conversationId) {
+        ThrowUtils.throwIf(StrUtil.isBlank(conversationId), ErrorCode.PARAMETER_NULL, "会话ID不能为空");
+        User user = UserHolder.getUser();
+        if (user == null) {
+            throw new BusinessException(ErrorCode.NOT_LOGIN, "用户未登录");
+        }
+        boolean stopped = SseEmitterUtil.stopStream(conversationId, "用户请求暂停输出");
+        return BaseResponse.success(stopped);
+    }
+
+    // ================================ 核心 RAG 方法 ================================
 
     private String performRagWithHistory(String query, String conversationId) {
         return performRagInternal(query, conversationId, spec -> spec.call().content());
@@ -202,7 +211,6 @@ public class ChatController {
         return performRagInternal(query, conversationId, spec -> spec.stream().content());
     }
 
-    /** 核心：RAG 内容只以 SystemMessage 出现，永不污染历史 */
     private <T> T performRagInternal(String query,
                                      String conversationId,
                                      Function<ChatClient.ChatClientRequestSpec, T> responseFunc) {
@@ -234,7 +242,7 @@ public class ChatController {
                     {}
                     """, context);
 
-            promptMessages.add(0, new SystemMessage(ragSystemPrompt)); // 放在最前面效果最佳
+            promptMessages.addFirst(new SystemMessage(ragSystemPrompt)); // 放在最前面效果最佳
         }
 
         // 最后加入用户当前真实说的这句话（原始 query）
@@ -282,8 +290,6 @@ public class ChatController {
         }
         return messages;
     }
-
-    // ================================ 其他方法 ================================
 
     private String executeSyncDeepThought(String query) {
         try {

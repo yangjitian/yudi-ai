@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import { chatStream, chat, getConversations, getConversationHistory, createConversationId, deleteConversationApi } from '@/api/chat'
+import { chatStream, chat, getConversations, getConversationHistory, createConversationId, deleteConversationApi, pauseChatStream } from '@/api/chat'
 import router from '@/router'
 import { ElMessage } from 'element-plus'
 
@@ -10,6 +10,9 @@ export const useChatStore = defineStore('chat', () => {
   const messages = ref([])
   const isLoading = ref(false)
   const useDeepThinking = ref(false)
+  const isStreamPaused = ref(false)
+  const activeStreamConversationId = ref(null)
+  const activeStreamAbortController = ref(null)
 
   const loadConversations = async () => {
     try {
@@ -165,14 +168,20 @@ export const useChatStore = defineStore('chat', () => {
   }
 
   const sendMessageStream = async (query, conversationId) => {
+    const controller = new AbortController()
+    activeStreamAbortController.value = controller
+
     isLoading.value = true
+    isStreamPaused.value = false
+    activeStreamConversationId.value = conversationId || null
     addMessage('user', query, conversationId)
     
     let assistantMessageAdded = false
+    let pausedByUser = false
     
     try {
       const mode = useDeepThinking.value ? 'deep_thought' : 'normal';
-      const response = await chatStream({ query, conversationId, mode });
+      const response = await chatStream({ query, conversationId, mode, signal: controller.signal });
       
       const reader = response.body.getReader()
       const decoder = new TextDecoder()
@@ -226,6 +235,7 @@ export const useChatStore = defineStore('chat', () => {
             if (currentEvent === 'conversationId') {
               const data = dataContent.trim()
               receivedConversationId = data
+              activeStreamConversationId.value = data
               if (!conversationId) {
                 const pendingIdx = conversations.value.findIndex(c => c.isPending)
                 if (pendingIdx > -1) {
@@ -240,6 +250,13 @@ export const useChatStore = defineStore('chat', () => {
                 }
                 currentConversationId.value = receivedConversationId
               }
+              currentEvent = null
+              dataBuffer = []
+              continue
+            }
+
+            if (currentEvent === 'paused') {
+              pausedByUser = true
               currentEvent = null
               dataBuffer = []
               continue
@@ -351,9 +368,31 @@ export const useChatStore = defineStore('chat', () => {
       }
 
       isLoading.value = false
+      isStreamPaused.value = pausedByUser
+      activeStreamConversationId.value = null
+      if (activeStreamAbortController.value === controller) {
+        activeStreamAbortController.value = null
+      }
       return { success: true, conversationId: receivedConversationId || conversationId }
     } catch (error) {
+      if (activeStreamAbortController.value === controller) {
+        activeStreamAbortController.value = null
+      }
+      if (error.name === 'AbortError') {
+        if (rafId !== null) {
+          cancelAnimationFrame(rafId)
+        }
+        if (assistantMessageAdded && typeof fullContent === 'string') {
+          updateLastMessage(fullContent)
+        }
+        isLoading.value = false
+        activeStreamConversationId.value = null
+        isStreamPaused.value = true
+        return { success: false, paused: true }
+      }
       isLoading.value = false
+      activeStreamConversationId.value = null
+      isStreamPaused.value = false
       if (!assistantMessageAdded) {
         addMessage('assistant', '抱歉，发生了错误：' + error.message)
       } else {
@@ -422,19 +461,46 @@ export const useChatStore = defineStore('chat', () => {
 
   const sendMessage = async (query) => {
     let conversationId = currentConversationId.value
-    if (!conversationId) {
-      const hasPending = conversations.value.some(c => c.isPending)
-      if (!hasPending) {
-        conversations.value.unshift({
-          id: `pending_${Date.now()}`,
-          title: '新会话',
-          updatedAt: Date.now(),
-          isPending: true
-        })
+
+    if (!conversationId || conversationId.startsWith('pending_')) {
+      conversationId = await createConversation()
+      if (!conversationId) {
+        ElMessage.error('无法创建会话，请稍后再试')
+        return { success: false }
       }
     }
 
-    return await sendMessageStream(query, conversationId || null)
+    return await sendMessageStream(query, conversationId)
+  }
+
+  const pauseCurrentStream = async () => {
+    if (!isLoading.value) {
+      ElMessage.warning('当前没有正在输出的内容')
+      return false
+    }
+    const targetConversationId = activeStreamConversationId.value || currentConversationId.value
+    if (!targetConversationId) {
+      ElMessage.warning('会话信息尚未就绪，请稍后重试')
+      return false
+    }
+    try {
+      const resp = await pauseChatStream(targetConversationId)
+      if (resp?.code !== 200) {
+        throw new Error(resp?.message || '暂停失败')
+      }
+      if (activeStreamAbortController.value) {
+        activeStreamAbortController.value.abort()
+        activeStreamAbortController.value = null
+      }
+      isLoading.value = false
+      isStreamPaused.value = true
+      activeStreamConversationId.value = null
+      ElMessage.success('已暂停当前回复')
+      return true
+    } catch (error) {
+      ElMessage.error('暂停失败：' + (error.message || '未知错误'))
+      return false
+    }
   }
 
   return {
@@ -442,13 +508,15 @@ export const useChatStore = defineStore('chat', () => {
     currentConversationId,
     messages,
     isLoading,
+    isStreamPaused,
     useDeepThinking,
     loadConversations,
     createConversation,
     switchConversation,
     deleteConversation,
     addMessage,
-    sendMessage
+    sendMessage,
+    pauseCurrentStream
   }
 })
 

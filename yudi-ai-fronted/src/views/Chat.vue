@@ -259,15 +259,16 @@
                 </div>
               </div>
               <el-button
-                type="primary"
-                circle
-                :icon="Promotion"
-                :loading="chatStore.isLoading"
-                @click="handleSendMessage"
-                :disabled="!inputText.trim()"
-                class="chat-send-btn"
-                title="发送消息"
-              />
+                :type="actionButtonType"
+                :class="['chat-send-btn', actionButtonStateClass]"
+                :icon="actionButtonIcon"
+                :loading="actionButtonLoading"
+                :disabled="actionButtonDisabled"
+                :title="actionButtonTitle"
+                @click="handlePrimaryAction"
+              >
+                {{ actionButtonLabel }}
+              </el-button>
             </div>
           </div>
         </div>
@@ -350,15 +351,16 @@
                   </div>
                 </div>
                 <el-button
-                  type="primary"
-                  circle
-                  :icon="Promotion"
-                  :loading="chatStore.isLoading"
-                  @click="handleSendMessage"
-                  :disabled="!inputText.trim()"
-                  class="chat-send-btn"
-                  title="发送消息"
-                />
+                  :type="actionButtonType"
+                  :class="['chat-send-btn', actionButtonStateClass]"
+                  :icon="actionButtonIcon"
+                  :loading="actionButtonLoading"
+                  :disabled="actionButtonDisabled"
+                  :title="actionButtonTitle"
+                  @click="handlePrimaryAction"
+                >
+                  {{ actionButtonLabel }}
+                </el-button>
               </div>
             </div>
           </div>
@@ -378,7 +380,7 @@ import { useRouter, useRoute } from 'vue-router'
 import { useUserStore } from '@/stores/user'
 import { useChatStore } from '@/stores/chat'
 import { getCurrentUser } from '@/api/user'
-import { Plus, Delete, Expand, Fold, Promotion, CaretBottom, CaretTop } from '@element-plus/icons-vue'
+import { Plus, Delete, Expand, Fold, Promotion, CaretBottom, CaretTop, VideoPause } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { marked } from 'marked'
 import hljs from 'highlight.js'
@@ -396,8 +398,30 @@ const chatStore = useChatStore()
 const sidebarCollapsed = ref(false)
 const inputText = ref('')
 const isInputEmpty = computed(() => inputText.value.trim().length === 0)
+const isStreaming = computed(() => chatStore.isLoading)
+const actionButtonIcon = computed(() => (isStreaming.value ? VideoPause : Promotion))
+const actionButtonType = computed(() => (isStreaming.value ? 'warning' : 'primary'))
+const actionButtonTitle = computed(() => (isStreaming.value ? '暂停输出' : '发送消息'))
+const actionButtonLoading = computed(() => (isStreaming.value ? isPausing.value : false))
+const actionButtonDisabled = computed(() => {
+  if (isStreaming.value) {
+    return isPausing.value
+  }
+  return isInputEmpty.value
+})
+const actionButtonLabel = computed(() => (isStreaming.value ? '暂停' : '发送'))
+const actionButtonStateClass = computed(() => {
+  if (isStreaming.value) {
+    return isPausing.value ? 'chat-send-btn--pause-disabled' : 'chat-send-btn--pause'
+  }
+  if (actionButtonDisabled.value) {
+    return 'chat-send-btn--disabled'
+  }
+  return 'chat-send-btn--send'
+})
 const isTextareaFocused = ref(false)
 const isUserTyping = ref(false)
+const isPausing = ref(false)
 const isComposing = ref(false)
 const shouldShowPlaceholder = computed(() => {
   if (!isInputEmpty.value) return false
@@ -708,6 +732,24 @@ const handleSendMessage = async () => {
   }
   await nextTick()
   scrollToBottom()
+}
+
+const handlePauseStream = async () => {
+  if (!chatStore.isLoading || isPausing.value) return
+  isPausing.value = true
+  try {
+    await chatStore.pauseCurrentStream()
+  } finally {
+    isPausing.value = false
+  }
+}
+
+const handlePrimaryAction = async () => {
+  if (chatStore.isLoading) {
+    await handlePauseStream()
+  } else {
+    await handleSendMessage()
+  }
 }
 
 // 使用节流优化滚动性能
@@ -2446,31 +2488,82 @@ const handleAuthAction = () => {
 }
 
 .chat-send-btn {
-  width: 44px;
-  height: 44px;
-  background: #4f6a7d;
-  border-color: #4f6a7d;
-  color: #fff;
-  box-shadow: 0 14px 28px rgba(79, 106, 125, 0.35);
+  min-width: 90px;
+  height: 40px;
+  border: none;
+  border-radius: 24px;
+  font-weight: 600;
+  font-size: 13px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 0 16px;
+  box-shadow: none;
   flex-shrink: 0;
-  transition: background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
-  
-  &:hover {
-    background: #44596d;
-    border-color: #44596d;
-  }
-  
-  &.is-disabled {
-    background: #d5d7de;
-    border-color: #d5d7de;
-    box-shadow: none;
-  }
+  transition: transform 0.15s ease, box-shadow 0.2s ease, opacity 0.2s ease;
 }
 
-.chat-input-shell:focus-within .chat-send-btn:not(.is-disabled) {
-  background: #6f8daa;
-  border-color: #6f8daa;
-  box-shadow: 0 18px 36px rgba(111, 141, 170, 0.35);
+.chat-send-btn.el-button--primary,
+.chat-send-btn.el-button--warning {
+  background: transparent;
+  border-color: transparent;
+  color: inherit;
+}
+
+.chat-send-btn :deep(.el-icon) {
+  font-size: 15px;
+}
+
+.chat-send-btn--send {
+  background: linear-gradient(145deg, #1b2e6b, #0c1a3a);
+  color: #fff;
+  box-shadow: 0 10px 24px rgba(12, 26, 58, 0.4);
+}
+
+.chat-send-btn--send:hover {
+  box-shadow: 0 14px 30px rgba(12, 26, 58, 0.55);
+  transform: translateY(-1px);
+}
+
+.chat-send-btn--pause {
+  background: linear-gradient(145deg, #c0390c, #861703);
+  color: #fff;
+  box-shadow: 0 10px 26px rgba(134, 23, 3, 0.45);
+}
+
+.chat-send-btn--pause:hover {
+  box-shadow: 0 14px 30px rgba(134, 23, 3, 0.55);
+  transform: translateY(-1px);
+}
+
+.chat-send-btn--pause-disabled {
+  background: linear-gradient(145deg, #a35436, #813021);
+  color: #fff;
+  box-shadow: 0 6px 16px rgba(129, 48, 33, 0.4);
+  cursor: wait;
+  opacity: 0.78;
+}
+
+.chat-send-btn--disabled,
+.chat-send-btn.is-disabled {
+  background: #b5b9c2;
+  color: #f1f2f5;
+  box-shadow: none;
+  cursor: not-allowed;
+}
+
+.chat-input-shell:focus-within .chat-send-btn.chat-send-btn--send {
+  box-shadow: 0 16px 34px rgba(12, 26, 58, 0.5);
+}
+
+.chat-pause-btn {
+  margin-right: 12px;
+  height: 44px;
+  padding: 0 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .input-area-wrapper {

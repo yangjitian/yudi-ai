@@ -9,7 +9,7 @@ import { useUserStore } from '@/stores/user'
  * @param {string|null} params.conversationId - 会话ID
  * @returns {Promise<Response>} Fetch API的Response对象
  */
-export const chatStream = ({ query, mode, conversationId }) => {
+export const chatStream = ({ query, mode, conversationId, signal }) => {
   const userStore = useUserStore()
   const endpoint = conversationId ? `/api/c/chat/stream/${encodeURIComponent(conversationId)}` : '/api/c/chat/stream'
 
@@ -21,7 +21,8 @@ export const chatStream = ({ query, mode, conversationId }) => {
       'Content-Type': 'application/json',
       'Cache-Control': 'no-cache'
     },
-    body: JSON.stringify({ query, mode })
+    body: JSON.stringify({ query, mode }),
+    signal
   })
 }
 
@@ -68,6 +69,13 @@ export const getConversationHistory = (conversationId) => {
 export const createConversationId = () => {
   return request({
     url: '/history/conversation/new',
+    method: 'post'
+  })
+}
+
+export const pauseChatStream = (conversationId) => {
+  return request({
+    url: `/c/chat/stream/${encodeURIComponent(conversationId)}/pause`,
     method: 'post'
   })
 }

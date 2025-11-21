@@ -1,5 +1,6 @@
 package com.yudi.ai.utils;
 
+import cn.hutool.core.map.MapUtil;
 import cn.hutool.core.thread.ThreadUtil;
 import cn.hutool.core.util.StrUtil;
 import lombok.extern.slf4j.Slf4j;
@@ -43,17 +44,46 @@ public class SseEmitterUtil {
     }
 
     /**
+     * 使用 Hutool 并发 Map 维护可手动控制的流
+     */
+    private static final ConcurrentMap<String, StreamHandle> STREAM_REGISTRY = MapUtil.newConcurrentHashMap();
+
+    /**
      * 将 Flux<SseEmitter.SseEventBuilder> 转换为 SseEmitter（支持自定义事件）
-     *
-     * @param eventFlux 事件流
-     * @return SseEmitter 实例
      */
     public static SseEmitter fromEventFlux(Flux<SseEmitter.SseEventBuilder> eventFlux) {
+        return fromEventFlux(null, eventFlux, null);
+    }
+
+    /**
+     * 带标识的 SSE 转换，支持外部手动暂停
+     *
+     * @param streamKey   流标识（如 conversationId）
+     * @param eventFlux   事件流
+     * @param onTerminate 终止回调（可选）
+     */
+    public static SseEmitter fromEventFlux(String streamKey,
+                                           Flux<SseEmitter.SseEventBuilder> eventFlux,
+                                           Runnable onTerminate) {
         SseEmitter emitter = new SseEmitter(DEFAULT_TIMEOUT);
 
         final Disposable[] subscriptionHolder = new Disposable[1];
         final ScheduledFuture<?>[] heartbeatHolder = new ScheduledFuture<?>[1];
-        Runnable cleanup = getCleanup(subscriptionHolder, heartbeatHolder);
+        final AtomicBoolean terminateOnce = new AtomicBoolean(false);
+        Runnable baseCleanup = getCleanup(subscriptionHolder, heartbeatHolder);
+        Runnable cleanup = () -> {
+            baseCleanup.run();
+            if (onTerminate != null && terminateOnce.compareAndSet(false, true)) {
+                try {
+                    onTerminate.run();
+                } catch (Exception e) {
+                    log.error("SSE终止回调执行失败", e);
+                }
+            }
+            if (StrUtil.isNotBlank(streamKey)) {
+                STREAM_REGISTRY.remove(streamKey);
+            }
+        };
 
         emitter.onTimeout(() -> {
             log.debug("SSE连接超时");
@@ -106,6 +136,10 @@ public class SseEmitterUtil {
                 }
         );
 
+        if (StrUtil.isNotBlank(streamKey)) {
+            STREAM_REGISTRY.put(streamKey, new StreamHandle(streamKey, emitter, cleanup));
+        }
+
         return emitter;
     }
 
@@ -127,6 +161,21 @@ public class SseEmitterUtil {
             }
             log.debug("SSE连接资源已清理");
         };
+    }
+
+    /**
+     * 主动停止指定流
+     */
+    public static boolean stopStream(String streamKey, String reason) {
+        if (StrUtil.isBlank(streamKey)) {
+            return false;
+        }
+        StreamHandle handle = STREAM_REGISTRY.remove(streamKey);
+        if (handle == null) {
+            return false;
+        }
+        handle.stop(reason);
+        return true;
     }
 
     /**
@@ -165,6 +214,33 @@ public class SseEmitterUtil {
             emitter.completeWithError(error);
         } catch (Exception e) {
             log.trace("Emitter已关闭", e);
+        }
+    }
+
+    private static class StreamHandle {
+        private final String key;
+        private final SseEmitter emitter;
+        private final Runnable cleanup;
+        private final AtomicBoolean pausedEventSent = new AtomicBoolean(false);
+
+        private StreamHandle(String key, SseEmitter emitter, Runnable cleanup) {
+            this.key = key;
+            this.emitter = emitter;
+            this.cleanup = cleanup;
+        }
+
+        private void stop(String reason) {
+            if (pausedEventSent.compareAndSet(false, true)) {
+                try {
+                    emitter.send(SseEmitter.event()
+                            .name("paused")
+                            .data(StrUtil.blankToDefault(reason, "stream manually stopped")));
+                } catch (IOException e) {
+                    log.debug("发送暂停事件失败: {}", e.getMessage());
+                }
+            }
+            cleanup.run();
+            log.info("SSE流已手动停止，key={}", key);
         }
     }
 }
