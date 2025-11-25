@@ -13,6 +13,7 @@ import {
   uploadAvatar as apiUploadAvatar
 } from '@/api/user'
 import { ElMessage } from 'element-plus'
+import { notifyError } from '@/utils/notify'
 
 const formatUserId = (value) => {
   if (value === null || value === undefined) return ''
@@ -61,11 +62,11 @@ export const useUserStore = defineStore('user', () => {
         ElMessage.success('验证码已发送到您的邮箱')
         return true
       } else {
-        ElMessage.error(response.message || '发送验证码失败')
+        notifyError(response?.message || '发送验证码失败')
         return false
       }
     } catch (error) {
-      ElMessage.error(error.message || '发送验证码失败')
+      notifyError(error, '发送验证码失败')
       return false
     }
   }
@@ -77,11 +78,11 @@ export const useUserStore = defineStore('user', () => {
         ElMessage.success('验证码已发送到您的邮箱')
         return true
       } else {
-        ElMessage.error(response.message || '发送验证码失败')
+        notifyError(response?.message || '发送验证码失败')
         return false
       }
     } catch (error) {
-      ElMessage.error(error.message || '发送验证码失败')
+      notifyError(error, '发送验证码失败')
       return false
     }
   }
@@ -96,11 +97,11 @@ export const useUserStore = defineStore('user', () => {
         ElMessage.success('登录成功')
         return true
       } else {
-        ElMessage.error(response.message || '登录失败')
+        notifyError(response?.message || '登录失败')
         return false
       }
     } catch (error) {
-      ElMessage.error(error.message || '登录失败')
+      notifyError(error, '登录失败')
       return false
     }
   }
@@ -112,11 +113,11 @@ export const useUserStore = defineStore('user', () => {
         ElMessage.success('注册成功，请登录')
         return true
       } else {
-        ElMessage.error(response.message || '注册失败')
+        notifyError(response?.message || '注册失败')
         return false
       }
     } catch (error) {
-      ElMessage.error(error.message || '注册失败')
+      notifyError(error, '注册失败')
       return false
     }
   }
@@ -174,11 +175,11 @@ export const useUserStore = defineStore('user', () => {
         ElMessage.success(response.message || '资料更新成功')
         return true
       } else {
-        ElMessage.error(response.message || '资料更新失败')
+        notifyError(response?.message || '资料更新失败')
         return false
       }
     } catch (error) {
-      ElMessage.error(error.message || '资料更新失败')
+      notifyError(error, '资料更新失败')
       return false
     }
   }
@@ -192,11 +193,11 @@ export const useUserStore = defineStore('user', () => {
         ElMessage.success(response.message || '头像上传成功')
         return response.data
       } else {
-        ElMessage.error(response.message || '头像上传失败')
+        notifyError(response?.message || '头像上传失败')
         return null
       }
     } catch (error) {
-      ElMessage.error(error.message || '头像上传失败')
+      notifyError(error, '头像上传失败')
       return null
     }
   }
@@ -223,11 +224,11 @@ export const useUserStore = defineStore('user', () => {
           ElMessage.success('验证码已发送到当前绑定邮箱')
           return true
         } else {
-          ElMessage.error(response.message || '发送验证码失败')
+          notifyError(response?.message || '发送验证码失败')
           return false
         }
       } catch (error) {
-        ElMessage.error(error.message || '发送验证码失败')
+        notifyError(error, '发送验证码失败')
         return false
       }
     },
@@ -241,11 +242,11 @@ export const useUserStore = defineStore('user', () => {
           ElMessage.success('验证码校验通过')
           return true
         } else {
-          ElMessage.error(response.message || '验证码校验失败')
+          notifyError(response?.message || '验证码校验失败')
           return false
         }
       } catch (error) {
-        ElMessage.error(error.message || '验证码校验失败')
+        notifyError(error, '验证码校验失败')
         return false
       }
     }

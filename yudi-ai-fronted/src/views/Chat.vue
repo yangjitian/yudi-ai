@@ -382,6 +382,7 @@ import { useChatStore } from '@/stores/chat'
 import { getCurrentUser } from '@/api/user'
 import { Plus, Delete, Expand, Fold, Promotion, CaretBottom, CaretTop, VideoPause } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { notifyError } from '@/utils/notify'
 import { marked } from 'marked'
 import hljs from 'highlight.js'
 import 'highlight.js/styles/github-dark.css'
@@ -575,7 +576,7 @@ onMounted(async () => {
         localStorage.setItem('userInfo', JSON.stringify(userStore.userInfo))
       }
     } catch (error) {
-      ElMessage.error('加载用户信息失败')
+      notifyError(error, '加载用户信息失败')
     }
   }
   
@@ -2787,4 +2788,3 @@ const handleAuthAction = () => {
   }
 }
 </style>
-

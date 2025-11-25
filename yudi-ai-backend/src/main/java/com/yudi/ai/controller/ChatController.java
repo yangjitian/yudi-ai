@@ -11,6 +11,7 @@ import com.yudi.ai.common.BaseResponse;
 import com.yudi.ai.common.ErrorCode;
 import com.yudi.ai.exception.BusinessException;
 import com.yudi.ai.exception.ThrowUtils;
+import com.yudi.ai.model.dto.ChatRequestDTO;
 import com.yudi.ai.model.entity.User;
 import com.yudi.ai.model.vo.ChatResponseVO;
 import com.yudi.ai.model.vo.ConversationMemoryVO;
@@ -55,22 +56,22 @@ public class ChatController {
     private static final String DEFAULT_PROMPT = ResourceUtil.readUtf8Str("prompts/cook_app_system_prompt.md");
     private static final int MAX_HISTORY_ROUNDS = 6; // 最近 6 轮（user + assistant）
 
-    @Resource private QueryRewriter queryRewriter;
-    @Resource private ToolCallbackProvider toolCallbackProvider;
-    @Resource private ConversationMemoryService conversationMemoryService;
-    @Resource private YdManus ydManus;
+    @Resource
+    private QueryRewriter queryRewriter;
+
+    @Resource
+    private ToolCallbackProvider toolCallbackProvider;
+
+    @Resource
+    private ConversationMemoryService conversationMemoryService;
+
+    @Resource
+    private YdManus ydManus;
 
     private ChatClient dashScopeChatClient;
     private final DocumentRetriever pgRetriever;
     private final ChatClient.Builder chatClientBuilder;
     private final Object[] allToolInstances;
-
-    @Data
-    public static class ChatRequest {
-        private String query;
-        private String mode;
-        private String conversationId;
-    }
 
     public ChatController(ChatClient.Builder chatClientBuilder,
                           VectorStore pgVectorVectorStore,
@@ -106,10 +107,10 @@ public class ChatController {
     }
 
     @PostMapping({"/chat/stream", "/chat/stream/{conversationId}"})
-    public SseEmitter chatStream(@RequestBody ChatRequest chatRequest,
+    public SseEmitter chatStream(@RequestBody ChatRequestDTO chatRequestDTO,
                                  @PathVariable(required = false) String conversationId) {
-        String query = chatRequest.getQuery();
-        String mode = chatRequest.getMode();
+        String query = chatRequestDTO.getQuery();
+        String mode = chatRequestDTO.getMode();
         ThrowUtils.throwIf(StrUtil.isBlank(query), ErrorCode.PARAMETER_NULL, "查询内容不能为空");
 
         User user = UserHolder.getUser();
@@ -163,10 +164,10 @@ public class ChatController {
     }
 
     @PostMapping({"/chat", "/chat/{conversationId}"})
-    public BaseResponse<ChatResponseVO> chat(@RequestBody ChatRequest chatRequest,
+    public BaseResponse<ChatResponseVO> chat(@RequestBody ChatRequestDTO chatRequestDTO,
                                              @PathVariable(required = false) String conversationId) {
-        String query = chatRequest.getQuery();
-        String mode = chatRequest.getMode();
+        String query = chatRequestDTO.getQuery();
+        String mode = chatRequestDTO.getMode();
         ThrowUtils.throwIf(StrUtil.isBlank(query), ErrorCode.PARAMETER_NULL, "查询内容不能为空");
 
         User user = UserHolder.getUser();

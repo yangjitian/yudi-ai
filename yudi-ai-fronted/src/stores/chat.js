@@ -3,6 +3,7 @@ import { ref } from 'vue'
 import { chatStream, chat, getConversations, getConversationHistory, createConversationId, deleteConversationApi, pauseChatStream } from '@/api/chat'
 import router from '@/router'
 import { ElMessage } from 'element-plus'
+import { notifyError } from '@/utils/notify'
 
 export const useChatStore = defineStore('chat', () => {
   const conversations = ref([])
@@ -25,7 +26,7 @@ export const useChatStore = defineStore('chat', () => {
         }))
       }
     } catch (error) {
-      ElMessage.error('加载会话列表失败：' + (error.message || '未知错误'))
+      notifyError(error, '加载会话列表失败')
     }
   }
 
@@ -52,7 +53,7 @@ export const useChatStore = defineStore('chat', () => {
       }
       throw new Error(resp?.message || '创建会话失败')
     } catch (e) {
-      ElMessage.error('创建会话失败：' + (e.message || '未知错误'))
+      notifyError(e, '创建会话失败')
       return null
     }
   }
@@ -75,7 +76,7 @@ export const useChatStore = defineStore('chat', () => {
         })
       }
     } catch (error) {
-      ElMessage.error('加载历史消息失败：' + (error.message || '未知错误'))
+      notifyError(error, '加载历史消息失败')
     }
   }
 
@@ -106,7 +107,7 @@ export const useChatStore = defineStore('chat', () => {
       }
       ElMessage.success('删除成功')
     } catch (e) {
-      ElMessage.error('删除失败：' + (e.message || '未知错误'))
+      notifyError(e, '删除失败')
       throw e
     }
   }
@@ -465,7 +466,7 @@ export const useChatStore = defineStore('chat', () => {
     if (!conversationId || conversationId.startsWith('pending_')) {
       conversationId = await createConversation()
       if (!conversationId) {
-        ElMessage.error('无法创建会话，请稍后再试')
+        notifyError('无法创建会话，请稍后再试')
         return { success: false }
       }
     }
@@ -498,7 +499,7 @@ export const useChatStore = defineStore('chat', () => {
       ElMessage.success('已暂停当前回复')
       return true
     } catch (error) {
-      ElMessage.error('暂停失败：' + (error.message || '未知错误'))
+      notifyError(error, '暂停失败')
       return false
     }
   }
@@ -519,4 +520,3 @@ export const useChatStore = defineStore('chat', () => {
     pauseCurrentStream
   }
 })
-

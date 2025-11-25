@@ -1,6 +1,6 @@
 import axios from 'axios'
 import JSONBig from 'json-bigint'
-import { ElMessage } from 'element-plus'
+// unified error messaging is handled at call sites
 import { useUserStore } from '@/stores/user'
 import router from '@/router'
 
@@ -40,18 +40,17 @@ request.interceptors.response.use(
   },
   (error) => {
     if (error.response) {
-      const { status, data } = error.response
+      const { status } = error.response
       
       if (status === 401) {
         const userStore = useUserStore()
         userStore.userLogout()
         router.push('/login')
-        ElMessage.error('登录已过期，请重新登录')
       } else {
-        ElMessage.error(data?.message || `请求失败: ${status}`)
+        
       }
     } else {
-      ElMessage.error(error.message || '网络错误')
+      
     }
     
     return Promise.reject(error)
