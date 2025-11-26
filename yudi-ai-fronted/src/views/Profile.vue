@@ -98,7 +98,7 @@
       <p class="dialog-tip">
         验证通过，请输入要绑定的新邮箱地址。
       </p>
-      <el-form :model="newEmailForm" :rules="newEmailRules" ref="newEmailFormRef" label-width="80px">
+      <el-form :model="newEmailForm" label-width="80px">
         <el-form-item label="新邮箱">
           <el-input
             v-model="newEmailForm.email"
@@ -150,24 +150,6 @@ const verifyForm = ref({
 const newEmailForm = ref({
   email: ''
 })
-const newEmailFormRef = ref(null)
-const newEmailRules = {
-  email: [
-    { required: true, message: '请输入新邮箱', trigger: ['blur', 'change'] },
-    { validator: (rule, value, callback) => {
-      const v = String(value || '').trim()
-      if (!v) return callback(new Error('请输入新邮箱'))
-      if (/\s/.test(v)) return callback(new Error('邮箱不能包含空格'))
-      if (v.length > 254) return callback(new Error('邮箱长度不能超过254字符'))
-      const parts = v.split('@')
-      if (parts.length !== 2) return callback(new Error('请输入正确的邮箱格式'))
-      if (parts[0].length === 0 || parts[0].length > 64) return callback(new Error('邮箱本地部分不能超过64字符'))
-      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/
-      if (!emailRegex.test(v)) return callback(new Error('请输入正确的邮箱格式'))
-      callback()
-    }, trigger: ['blur', 'change'] }
-  ]
-}
 
 const initProfile = () => {
   const info = userStore.userInfo
@@ -262,11 +244,10 @@ const handleVerifyCode = async () => {
 }
 
 const handleSubmitNewEmail = async () => {
-  const valid = await new Promise(resolve => {
-    if (!newEmailFormRef.value) return resolve(false)
-    newEmailFormRef.value.validate((ok) => resolve(!!ok))
-  })
-  if (!valid) return
+  if (!newEmailForm.value.email) {
+    ElMessage.warning('请输入新邮箱')
+    return
+  }
   newEmailLoading.value = true
   try {
     const success = await userStore.updateProfile({

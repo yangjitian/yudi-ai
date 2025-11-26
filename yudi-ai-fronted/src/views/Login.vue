@@ -128,67 +128,32 @@ const registerForm = reactive({
 
 const loginRules = {
   userAccount: [
-    { required: true, message: '请输入邮箱', trigger: ['blur', 'change'] },
-    { validator: (rule, value, callback) => {
-      const v = String(value || '').trim()
-      if (!v) return callback(new Error('请输入邮箱'))
-      if (/\s/.test(v)) return callback(new Error('邮箱不能包含空格'))
-      if (v.length > 254) return callback(new Error('邮箱长度不能超过254字符'))
-      const parts = v.split('@')
-      if (parts.length !== 2) return callback(new Error('请输入正确的邮箱格式'))
-      if (parts[0].length === 0 || parts[0].length > 64) return callback(new Error('邮箱本地部分不能超过64字符'))
-      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/
-      if (!emailRegex.test(v)) return callback(new Error('请输入正确的邮箱格式'))
-      callback()
-    }, trigger: ['blur', 'change'] }
+    { required: true, message: '请输入邮箱', trigger: 'blur' },
+    { type: 'email', message: '请输入正确的邮箱格式', trigger: 'blur' }
   ],
   verificationCode: [
-    { required: true, message: '请输入验证码', trigger: ['blur', 'change'] },
-    { validator: (rule, value, callback) => {
-      const v = String(value || '').trim()
-      if (!v) return callback(new Error('请输入验证码'))
-      if (!/^\d{6}$/.test(v)) return callback(new Error('验证码为6位数字'))
-      callback()
-    }, trigger: ['blur', 'change'] }
+    { required: true, message: '请输入验证码', trigger: 'blur' },
+    { len: 6, message: '验证码为6位数字', trigger: 'blur' }
   ]
 }
 
 const registerRules = {
   userAccount: [
-    { required: true, message: '请输入邮箱', trigger: ['blur', 'change'] },
-    { validator: (rule, value, callback) => {
-      const v = String(value || '').trim()
-      if (!v) return callback(new Error('请输入邮箱'))
-      if (/\s/.test(v)) return callback(new Error('邮箱不能包含空格'))
-      if (v.length > 254) return callback(new Error('邮箱长度不能超过254字符'))
-      const parts = v.split('@')
-      if (parts.length !== 2) return callback(new Error('请输入正确的邮箱格式'))
-      if (parts[0].length === 0 || parts[0].length > 64) return callback(new Error('邮箱本地部分不能超过64字符'))
-      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/
-      if (!emailRegex.test(v)) return callback(new Error('请输入正确的邮箱格式'))
-      callback()
-    }, trigger: ['blur', 'change'] }
+    { required: true, message: '请输入邮箱', trigger: 'blur' },
+    { type: 'email', message: '请输入正确的邮箱格式', trigger: 'blur' }
   ],
   verificationCode: [
-    { required: true, message: '请输入验证码', trigger: ['blur', 'change'] },
-    { validator: (rule, value, callback) => {
-      const v = String(value || '').trim()
-      if (!v) return callback(new Error('请输入验证码'))
-      if (!/^\d{6}$/.test(v)) return callback(new Error('验证码为6位数字'))
-      callback()
-    }, trigger: ['blur', 'change'] }
+    { required: true, message: '请输入验证码', trigger: 'blur' },
+    { len: 6, message: '验证码为6位数字', trigger: 'blur' }
   ]
 }
 
 // 发送登录验证码
 const handleSendLoginCode = async () => {
-  const valid = await new Promise(resolve => {
-    if (!loginFormRef.value) return resolve(false)
-    loginFormRef.value.validateField('userAccount', (errorMessage) => {
-      resolve(!errorMessage)
-    })
-  })
-  if (!valid) return
+  if (!loginForm.userAccount) {
+    ElMessage.warning('请先输入邮箱')
+    return
+  }
   
   loginCodeSending.value = true
   try {
@@ -209,13 +174,10 @@ const handleSendLoginCode = async () => {
 
 // 发送注册验证码
 const handleSendRegisterCode = async () => {
-  const valid = await new Promise(resolve => {
-    if (!registerFormRef.value) return resolve(false)
-    registerFormRef.value.validateField('userAccount', (errorMessage) => {
-      resolve(!errorMessage)
-    })
-  })
-  if (!valid) return
+  if (!registerForm.userAccount) {
+    ElMessage.warning('请先输入邮箱')
+    return
+  }
   
   registerCodeSending.value = true
   try {
