@@ -1,6 +1,6 @@
 <template>
   <div class="profile-page">
-    <div class="profile-card">
+    <div class="profile-card glass-card">
       <div class="profile-header">
         <h2>个人资料</h2>
         <p>管理您的账号信息和联系方式</p>
@@ -22,7 +22,7 @@
               :http-request="handleAvatarUpload"
               :disabled="uploadingAvatar"
             >
-              <el-button type="primary" :loading="uploadingAvatar">
+              <el-button type="primary" :loading="uploadingAvatar" class="gradient-btn">
                 上传头像
               </el-button>
             </el-upload>
@@ -32,14 +32,14 @@
 
         <el-form :model="profileForm" label-width="90px" class="profile-form" :disabled="basicSaving">
           <el-form-item label="用户ID">
-            <el-input v-model="profileForm.id" disabled />
+            <el-input v-model="profileForm.id" disabled class="glass-input" />
           </el-form-item>
           <el-form-item label="用户昵称">
-            <el-input v-model="profileForm.userName" placeholder="请输入昵称" />
+            <el-input v-model="profileForm.userName" placeholder="请输入昵称" class="glass-input" />
           </el-form-item>
           <el-form-item label="登录账号">
             <div class="account-row">
-              <el-input v-model="profileForm.userAccount" disabled />
+              <el-input v-model="profileForm.userAccount" disabled class="glass-input" />
               <el-button type="primary" link @click="handleChangeAccountClick">
                 更换邮箱
               </el-button>
@@ -49,7 +49,7 @@
 
         <div class="actions-row">
           <el-button @click="goBack">返回聊天</el-button>
-          <el-button type="primary" :loading="basicSaving" @click="handleSaveBasicProfile">
+          <el-button type="primary" :loading="basicSaving" @click="handleSaveBasicProfile" class="gradient-btn">
             保存资料
           </el-button>
         </div>
@@ -304,51 +304,59 @@ const handleAvatarUpload = async ({ file, onSuccess, onError }) => {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(135deg, #f5f7fb, #e4ecf7);
+  // Background handled globally in App.vue
   padding: 24px;
 }
 
 .profile-card {
   width: 100%;
   max-width: 720px;
-  background: #ffffff;
-  border-radius: 16px;
-  box-shadow: 0 18px 44px rgba(15, 23, 42, 0.12);
-  padding: 28px 32px 24px;
+  // Use glass-card visualization via class attribute in template
+  
+  padding: 40px;
 }
 
 .profile-header {
+  text-align: center;
+  margin-bottom: 30px;
+
   h2 {
     margin: 0;
-    font-size: 22px;
+    font-size: 24px;
     font-weight: 700;
-    color: #273444;
+    color: #1e293b;
+    background: linear-gradient(to right, #6366f1, #ec4899);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
   }
 
   p {
-    margin-top: 6px;
+    margin-top: 8px;
     margin-bottom: 0;
-    color: #7b8794;
-    font-size: 13px;
+    color: #64748b;
+    font-size: 14px;
   }
 }
 
 .profile-section {
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 24px;
 }
 
 .avatar-block {
   display: flex;
   align-items: center;
+  justify-content: center;
+  flex-direction: column;
   gap: 18px;
+  padding-bottom: 10px;
 }
 
 .avatar-actions {
-    flex: 1;
   display: flex;
   flex-direction: column;
+  align-items: center;
   gap: 10px;
 }
 
@@ -358,11 +366,13 @@ const handleAvatarUpload = async ({ file, onSuccess, onError }) => {
 
 .avatar-tip {
   font-size: 12px;
-  color: #7b8794;
+  color: #94a3b8;
 }
 
+// Override removed in favor of global .glass-input class
+
 .profile-form {
-  margin-top: 4px;
+  margin-top: 10px;
 }
 
 .account-row {
@@ -373,19 +383,25 @@ const handleAvatarUpload = async ({ file, onSuccess, onError }) => {
 
 .actions-row {
   display: flex;
-  justify-content: flex-end;
-  gap: 12px;
-  margin-top: 8px;
+  justify-content: center;
+  gap: 20px;
+  margin-top: 20px;
+  
+  .el-button {
+    min-width: 120px;
+    height: 40px;
+    border-radius: 10px;
+  }
 }
 
 .dialog-tip {
-  font-size: 13px;
-  color: #555;
+  font-size: 14px;
+  color: #475569;
   line-height: 1.6;
-  margin-bottom: 16px;
+  margin-bottom: 20px;
 
   .highlight {
-    color: #007aff;
+    color: #6366f1;
     font-weight: 600;
   }
 }
@@ -393,22 +409,18 @@ const handleAvatarUpload = async ({ file, onSuccess, onError }) => {
 .dialog-footer {
   display: inline-flex;
   justify-content: flex-end;
-  gap: 8px;
+  gap: 12px;
   width: 100%;
 }
 
 @media (max-width: 768px) {
   .profile-card {
-    padding: 20px 16px 18px;
+    padding: 24px 20px;
   }
 
   .avatar-block {
     flex-direction: column;
-    align-items: flex-start;
-    width: 100%;
-  }
-
-  .avatar-actions {
+    align-items: center;
     width: 100%;
   }
 }

@@ -30,7 +30,7 @@
           type="primary"
           :icon="Plus"
           @click="handleNewConversation"
-          class="new-chat-btn"
+          class="new-chat-btn gradient-btn"
         >
           新建会话
         </el-button>
@@ -1848,8 +1848,10 @@ const handleAuthAction = () => {
 
 .sidebar {
   width: 260px;
-  background: #f7f7f8;
-  border-right: 1px solid #e5e5e6;
+  background: rgba(255, 255, 255, 0.65);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-right: 1px solid rgba(255, 255, 255, 0.4);
   display: flex;
   flex-direction: column;
   transition: transform 0.3s;
@@ -1865,7 +1867,7 @@ const handleAuthAction = () => {
 
 .sidebar-header {
   padding: 16px;
-  border-bottom: 1px solid #e5e5e6;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.3);
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -1927,7 +1929,7 @@ const handleAuthAction = () => {
     transition: background 0.2s;
     
     &:hover {
-      background: #e9e9eb;
+      background: rgba(255, 255, 255, 0.5);
       
       .delete-btn {
         opacity: 1;
@@ -1935,7 +1937,8 @@ const handleAuthAction = () => {
     }
     
     &.active {
-      background: #e9e9eb;
+      background: rgba(255, 255, 255, 0.6);
+      box-shadow: 0 2px 8px rgba(0,0,0,0.05);
     }
     
     .conversation-info {
@@ -1968,7 +1971,7 @@ const handleAuthAction = () => {
 
 .sidebar-footer {
   padding: 16px;
-  border-top: 1px solid #e5e5e6;
+  border-top: 1px solid rgba(255, 255, 255, 0.3);
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -2052,7 +2055,7 @@ const handleAuthAction = () => {
   flex: 1;
   display: flex;
   flex-direction: column;
-  background: #fff;
+  background: transparent;
   position: relative;
   overflow: hidden;
 }
@@ -2060,7 +2063,7 @@ const handleAuthAction = () => {
 .mobile-header {
   display: none;
   padding: 12px 16px;
-  border-bottom: 1px solid #e5e5e6;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.3);
   align-items: center;
   gap: 12px;
   
@@ -2119,9 +2122,10 @@ const handleAuthAction = () => {
     padding-right: 36px;
     
     .message-content {
-      background: #007aff;
+      background: linear-gradient(to right, #6366f1, #8b5cf6);
       color: white;
       border-radius: 18px 18px 4px 18px;
+      box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
     }
   }
   
@@ -2129,9 +2133,13 @@ const handleAuthAction = () => {
     padding-left: 48px;
     
     .message-content {
-      background: #f1f1f3;
-      color: #333;
+      background: rgba(255, 255, 255, 0.75);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      color: #1e293b;
+      border: 1px solid rgba(255, 255, 255, 0.6);
       border-radius: 18px 18px 18px 4px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.05);
     }
   }
   
@@ -2402,10 +2410,11 @@ const handleAuthAction = () => {
   align-items: center;
   gap: 16px;
   border-radius: 48px;
-  background: #f9f9fb;
-  border: 1px solid #b5c0cf;
+  background: rgba(255, 255, 255, 0.6);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.5);
   padding: 3px 12px;
-  box-shadow: 0 16px 36px rgba(15, 23, 42, 0.08);
+  box-shadow: 0 8px 32px rgba(31, 38, 135, 0.1);
   transition: background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
   --chat-line-height: 26px;
   --chat-min-height: 48px;
@@ -2418,9 +2427,9 @@ const handleAuthAction = () => {
 }
 
 .chat-input-shell:focus-within {
-  background: #fff;
-  border-color: #5f7f94;
-  box-shadow: 0 24px 56px rgba(95, 127, 148, 0.25);
+  background: rgba(255, 255, 255, 0.9);
+  border-color: #6366f1;
+  box-shadow: 0 8px 32px rgba(99, 102, 241, 0.15);
 }
 
 .chat-mode-switch {
@@ -2516,9 +2525,9 @@ const handleAuthAction = () => {
 }
 
 .chat-send-btn--send {
-  background: linear-gradient(145deg, #1b2e6b, #0c1a3a);
+  background: linear-gradient(to right, #6366f1, #8b5cf6);
   color: #fff;
-  box-shadow: 0 10px 24px rgba(12, 26, 58, 0.4);
+  box-shadow: 0 4px 14px rgba(99, 102, 241, 0.4);
 }
 
 .chat-send-btn--send:hover {
@@ -2574,8 +2583,8 @@ const handleAuthAction = () => {
 
 .input-area {
   padding: 0 56px 0;
-  border-top: 1px solid #e5e5e6;
-  background: #fff;
+  border-top: 1px solid rgba(255, 255, 255, 0.3);
+  background: transparent;
 }
 
 .input-wrapper {
