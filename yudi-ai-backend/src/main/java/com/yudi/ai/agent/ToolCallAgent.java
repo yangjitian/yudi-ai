@@ -13,6 +13,7 @@ import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.ToolResponseMessage;
 import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.model.ChatResponse;
+import org.springframework.ai.chat.model.Generation;
 import org.springframework.ai.chat.prompt.ChatOptions;
 import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.ai.model.tool.ToolCallingManager;
@@ -22,6 +23,9 @@ import reactor.core.publisher.Flux;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executors;
 import java.util.stream.Collectors;
 
 /**
@@ -252,60 +256,59 @@ public class ToolCallAgent extends ReActAgent {
         AssistantMessage assistantMessage = toolCallChatResponse.getResult().getOutput();
         List<AssistantMessage.ToolCall> toolCalls = assistantMessage.getToolCalls();
         int toolCallCount = CollUtil.size(toolCalls);
-        log.info("{} 开始执行 {} 个工具调用", getName(), toolCallCount);
+        log.info("{} 开始并发执行 {} 个工具调用 (基于 Java 21 虚拟线程)", getName(), toolCallCount);
 
-        // 执行工具调用
-        // 重要：创建一个新的Prompt，只包含当前的AssistantMessage
-        List<Message> promptMessages = new ArrayList<>();
-        promptMessages.add(assistantMessage);
-        Prompt prompt = new Prompt(promptMessages, this.chatOptions);
+        List<ToolResponseMessage.ToolResponse> allResponses = new ArrayList<>();
 
-        // 执行工具
-        ToolExecutionResult toolExecutionResult = toolCallingManager.executeToolCalls(
-                prompt, toolCallChatResponse);
+        // 采用 Java 21 虚拟线程池进行高并发工具调度
+        try (var virtualThreadExecutor = Executors.newVirtualThreadPerTaskExecutor()) {
+            List<CompletableFuture<List<ToolResponseMessage.ToolResponse>>> futures = toolCalls.stream().map(toolCall -> CompletableFuture.supplyAsync(() -> {
+                try {
+                    log.info("虚拟线程正在并行执行工具: {}", toolCall.name());
+                    // 为单一工具调用构造隔离的响应上下文
+                    AssistantMessage singleCallMsg = new AssistantMessage(
+                            Objects.requireNonNull(assistantMessage.getText()),
+                            assistantMessage.getMetadata(),
+                            List.of(toolCall)
+                    );
+
+                    ChatResponse singleChatResponse = new ChatResponse(
+                            List.of(new Generation(singleCallMsg))
+                    );
+
+                    List<Message> promptMessages = new ArrayList<>();
+                    promptMessages.add(singleCallMsg);
+                    Prompt prompt = new Prompt(promptMessages, this.chatOptions);
+
+                    ToolExecutionResult result = toolCallingManager.executeToolCalls(prompt, singleChatResponse);
+
+                    for (Message msg : result.conversationHistory()) {
+                        if (msg instanceof ToolResponseMessage) {
+                            return ((ToolResponseMessage) msg).getResponses();
+                        }
+                    }
+                } catch (Exception e) {
+                    log.error("虚拟线程执行工具 {} 失败: {}", toolCall.name(), e.getMessage(), e);
+                    return List.of(new ToolResponseMessage.ToolResponse(toolCall.id(), toolCall.name(), "执行失败: " + e.getMessage()));
+                }
+                return List.of(new ToolResponseMessage.ToolResponse(toolCall.id(), toolCall.name(), "执行完成但无结果返回"));
+            }, virtualThreadExecutor)).toList();
+
+            // 等待所有虚拟线程工具调用完成并合并结果
+            for (var future : futures) {
+                allResponses.addAll(future.join());
+            }
+        }
+
+        ToolResponseMessage toolResponseMessage = new ToolResponseMessage(allResponses);
+        // 确保添加合并后的工具响应消息到memory
+        getMemory().add(toolResponseMessage);
+        log.debug("并发执行完毕，已添加合并的工具响应消息，responses数量: {}", CollUtil.size(allResponses));
 
         // 记录工具调用耗时
         long actDuration = System.currentTimeMillis() - actStartTime;
-        log.info("{} 工具执行完成，耗时: {}ms (平均每个工具: {}ms)",
+        log.info("{} 虚拟线程并行工具执行完成，总耗时: {}ms (折合每个工具响应时间: {}ms)",
                 getName(), actDuration, toolCallCount > 0 ? actDuration / toolCallCount : 0);
-
-        // 从执行结果中获取工具响应消息
-        List<Message> resultMessages = toolExecutionResult.conversationHistory();
-
-        // 查找并添加ToolResponseMessage到memory
-        ToolResponseMessage toolResponseMessage = null;
-        for (Message msg : resultMessages) {
-            if (msg instanceof ToolResponseMessage) {
-                toolResponseMessage = (ToolResponseMessage) msg;
-                // 确保添加工具响应消息到memory
-                getMemory().add(toolResponseMessage);
-                log.debug("已添加工具响应消息，responses数量: {}",
-                        CollUtil.size(toolResponseMessage.getResponses()));
-                break;
-            }
-        }
-
-        // 如果没有找到工具响应消息，尝试从最后一条消息获取
-        if (toolResponseMessage == null) {
-            Message lastMsg = CollUtil.getLast(resultMessages);
-            if (lastMsg instanceof ToolResponseMessage) {
-                toolResponseMessage = (ToolResponseMessage) lastMsg;
-                getMemory().add(toolResponseMessage);
-            } else {
-                log.error("未能从工具执行结果中获取ToolResponseMessage");
-                // 创建一个默认的工具响应消息
-                List<ToolResponseMessage.ToolResponse> toolResponses = new ArrayList<>();
-                for (AssistantMessage.ToolCall toolCall : toolCalls) {
-                    toolResponses.add(new ToolResponseMessage.ToolResponse(
-                            toolCall.id(),
-                            toolCall.name(),
-                            "工具执行完成但未返回结果"
-                    ));
-                }
-                toolResponseMessage = new ToolResponseMessage(toolResponses);
-                getMemory().add(toolResponseMessage);
-            }
-        }
 
         // 限制memory长度，避免上下文过长
         trimMemoryIfNeeded();
@@ -444,23 +447,26 @@ public class ToolCallAgent extends ReActAgent {
 
                     // 检查是否完成
                     if (getState() == AgentState.FINISHED) {
-                        // 任务完成，获取最终回答并使用流式输出
+                        // 任务完成，获取最终回答并使用虚拟线程防止阻塞 Flux 模拟流式输出
                         String finalAnswer = getLastAssistantMessage();
                         if (StrUtil.isNotBlank(finalAnswer)) {
-                            // 将最终回答分块发送（模拟流式）
-                            int chunkSize = 10;
-                            for (int i = 0; i < finalAnswer.length(); i += chunkSize) {
-                                int end = Math.min(i + chunkSize, finalAnswer.length());
-                                sink.next(finalAnswer.substring(i, end));
-                                // 添加小延迟，模拟流式效果
+                            Thread.startVirtualThread(() -> {
                                 try {
-                                    Thread.sleep(10);
+                                    int chunkSize = 2; // 极小切片，打字机更丝滑
+                                    for (int i = 0; i < finalAnswer.length(); i += chunkSize) {
+                                        int end = Math.min(i + chunkSize, finalAnswer.length());
+                                        sink.next(finalAnswer.substring(i, end));
+                                        Thread.sleep(15);
+                                    }
                                 } catch (InterruptedException e) {
                                     Thread.currentThread().interrupt();
+                                } finally {
+                                    sink.complete();
                                 }
-                            }
+                            });
+                        } else {
+                            sink.complete();
                         }
-                        sink.complete();
                     } else {
                         // 继续执行后续步骤（非流式）
                         continueExecution(sink, stepNumber + 1);
@@ -500,14 +506,24 @@ public class ToolCallAgent extends ReActAgent {
                     log.info("执行完成！总步数: {}", stepNumber);
                     String finalAnswer = getLastAssistantMessage();
                     if (StrUtil.isNotBlank(finalAnswer)) {
-                        // 将最终回答分块发送
-                        int chunkSize = 10;
-                        for (int j = 0; j < finalAnswer.length(); j += chunkSize) {
-                            int end = Math.min(j + chunkSize, finalAnswer.length());
-                            sink.next(finalAnswer.substring(j, end));
-                        }
+                        // 使用虚拟线程防止阻塞并执行分块发送
+                        Thread.startVirtualThread(() -> {
+                            try {
+                                int chunkSize = 2;
+                                for (int j = 0; j < finalAnswer.length(); j += chunkSize) {
+                                    int end = Math.min(j + chunkSize, finalAnswer.length());
+                                    sink.next(finalAnswer.substring(j, end));
+                                    Thread.sleep(15);
+                                }
+                            } catch (InterruptedException e) {
+                                Thread.currentThread().interrupt();
+                            } finally {
+                                sink.complete();
+                            }
+                        });
+                    } else {
+                        sink.complete();
                     }
-                    sink.complete();
                     return;
                 }
             }

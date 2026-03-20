@@ -44,7 +44,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Function;
 
 /**
- * 最终完美版 ChatController（已彻底解决 RAG 污染问题）
+ * 最终版 ChatController（决 RAG 污染问题）
  * 核心思想：RAG 检索内容只以 SystemMessage 形式出现，永不进入历史！
  */
 @Slf4j
